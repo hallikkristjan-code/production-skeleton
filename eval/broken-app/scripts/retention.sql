@@ -1,0 +1,1 @@
+-- nightly cleanup: delete from audit_log where at < now() - interval '365 days';

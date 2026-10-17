@@ -1,0 +1,14 @@
+{
+  "name": "production-skeleton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Day-0 production skeleton: 13 gates, read-only probe, human-gates register. Plus skeptic-review, the evidence-based audit that proves the floor holds.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test",
+    "probe": "node skills/production-skeleton/scripts/probe.mjs",
+    "fix": "node skills/production-skeleton/scripts/fix.mjs"
+  }
+}

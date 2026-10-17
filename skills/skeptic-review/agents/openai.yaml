@@ -1,0 +1,6 @@
+interface:
+  display_name: "skeptic-review"
+  short_description: "Evidence-based production-readiness audit: 13 sections, file:line or ❌"
+  default_prompt: "Run the skeptic-review audit on this repo and give the report in its fixed shape."
+policy:
+  allow_implicit_invocation: false

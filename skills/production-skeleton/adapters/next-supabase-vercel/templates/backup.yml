@@ -1,0 +1,114 @@
+name: Supabase backup
+
+# Supabase's own point-in-time recovery is a paid add-on and, either way, it
+# lives in the same account as the thing it protects. This is the independent
+# copy: encrypted to a key whose private half never touches CI, kept both as a
+# 90-day artifact and — once a week — as a commit in this private repo.
+#
+# Setup (once, see docs/backup.md):
+#   1. gpg keypair on your own machine, public half committed as
+#      .github/backup-public.asc
+#   2. repo secret BACKUP_DATABASE_URL = Supabase → Settings → Database →
+#      Connection string → URI (session pooler, with the password)
+
+on:
+  schedule:
+    # Daily, so at most one day of edits can ever be lost.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write # the weekly dump is committed back
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check the encryption key is present
+        run: |
+          if [ ! -f .github/backup-public.asc ]; then
+            echo "::error::.github/backup-public.asc is missing — see docs/backup.md. Refusing to dump the database unencrypted."
+            exit 1
+          fi
+
+      - name: Install postgresql-client-17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Import the public key
+        run: |
+          set -euo pipefail
+          gpg --import .github/backup-public.asc
+          # --import-ownertrust needs the 40-char fingerprint (fpr, field 10),
+          # not the 16-char key id, or --encrypt stops to ask a question no one
+          # is there to answer.
+          KEY_FPR=$(gpg --list-keys --with-colons --fingerprint | awk -F: '/^fpr/ {print $10; exit}')
+          echo "${KEY_FPR}:6:" | gpg --import-ownertrust
+          echo "RECIPIENT=${KEY_FPR}" >> "$GITHUB_ENV"
+
+      - name: Dump and encrypt
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          # pipefail, or a failed pg_dump would be hidden by gpg's clean exit.
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::secret BACKUP_DATABASE_URL is not set — see docs/backup.md"
+            exit 1
+          fi
+          TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M')
+          OUTFILE="backups/${TIMESTAMP}.sql.gpg"
+          mkdir -p backups
+          # --no-owner/--no-acl so the dump restores under a different role.
+          # --schema=public only: a fresh Supabase project already owns auth,
+          # storage and realtime, and a dump carrying those does not restore
+          # cleanly. All app data lives in public.
+          # The runner has pg_dump 16 earlier in PATH; call 17 explicitly.
+          /usr/lib/postgresql/17/bin/pg_dump --no-owner --no-acl --schema=public --format=plain "$DATABASE_URL" \
+            | gpg --encrypt --armor --trust-model always --recipient "$RECIPIENT" \
+            > "$OUTFILE"
+          # An empty dump encrypts perfectly happily, so check the size.
+          SIZE=$(stat -c%s "$OUTFILE")
+          if [ "$SIZE" -lt 2000 ]; then
+            echo "::error::Backup is only ${SIZE} bytes — pg_dump almost certainly failed"
+            exit 1
+          fi
+          ls -lh "$OUTFILE"
+          echo "OUTFILE=$OUTFILE" >> "$GITHUB_ENV"
+          echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_ENV"
+          # Only Mondays and manual runs are kept forever: a daily commit of
+          # personal data would grow the repo history without adding safety.
+          if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "COMMIT_TO_REPO=true" >> "$GITHUB_ENV"
+          else
+            echo "COMMIT_TO_REPO=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artifact (90 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ env.TIMESTAMP }}
+          path: ${{ env.OUTFILE }}
+          retention-days: 90
+
+      - name: Commit the weekly dump
+        if: env.COMMIT_TO_REPO == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUTFILE"
+          git commit -m "Backup ${TIMESTAMP}"
+          git push

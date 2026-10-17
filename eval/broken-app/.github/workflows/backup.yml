@@ -1,0 +1,7 @@
+on:
+  schedule:
+    - cron: "0 3 * * *"
+jobs:
+  backup:
+    steps:
+      - run: pg_dump "$DATABASE_URL" | gpg --encrypt > backup.sql.gpg

@@ -1,0 +1,6 @@
+interface:
+  display_name: "production-skeleton"
+  short_description: "Day-0 production floor: 13 gates, read-only probe, human-gates register"
+  default_prompt: "Run the production-skeleton probe on this repo and show the scorecard."
+policy:
+  allow_implicit_invocation: false

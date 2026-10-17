@@ -1,0 +1,6 @@
+{
+  "name": "broken-app",
+  "private": true,
+  "scripts": { "build": "next build", "test": "vitest run" },
+  "dependencies": { "next": "16.0.0", "@supabase/supabase-js": "2.0.0", "@supabase/ssr": "0.5.0", "@sentry/nextjs": "8.0.0", "zod": "3.0.0" }
+}

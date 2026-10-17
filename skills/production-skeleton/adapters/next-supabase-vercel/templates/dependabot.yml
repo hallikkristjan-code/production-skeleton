@@ -1,0 +1,18 @@
+# Weekly dependency PRs. Minor and patch bumps arrive grouped, so the review is
+# one PR a week; majors stay separate because each needs its own changelog read.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

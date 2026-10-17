@@ -1,0 +1,21 @@
+{
+  "name": "next-supabase-vercel",
+  "detect": { "deps": ["next"] },
+  "files": [
+    { "gate": 1, "src": "templates/ci.yml", "dest": ".github/workflows/ci.yml" },
+    { "gate": 2, "src": "templates/dependabot.yml", "dest": ".github/dependabot.yml" },
+    { "gate": 2, "src": "templates/osv-scanner.yml", "dest": ".github/workflows/osv-scanner.yml" },
+    { "gate": 3, "src": "templates/env.example", "dest": ".env.example", "note": "add every variable your code reads; the probe lists the missing ones" },
+    { "gate": 4, "src": "templates/HUMAN-GATES.md", "dest": "HUMAN-GATES.md" },
+    { "gate": 5, "src": null, "dest": null, "humanGate": "Install an error tracker (e.g. `npx @sentry/wizard@latest -i nextjs`) and add its DSN to the hosting env" },
+    { "gate": 6, "src": "templates/health-route.ts", "dest": "app/api/health/route.ts", "requires": { "deps": ["@supabase/supabase-js"] } },
+    { "gate": 7, "src": "templates/backup.yml", "dest": ".github/workflows/backup.yml", "requires": { "deps": ["@supabase/supabase-js"] }, "humanGate": "Backup: create a gpg keypair, commit the public half as .github/backup-public.asc, add repo secret BACKUP_DATABASE_URL (Supabase session-pooler URI)" },
+    { "gate": 7, "src": "templates/restore-drill.md", "dest": "docs/ops/restore-drill.md", "humanGate": "Run the restore drill (docs/ops/restore-drill.md) and write today's date and the row count into it" },
+    { "gate": 8, "src": "templates/rollback.md", "dest": "docs/ops/rollback.md" },
+    { "gate": 9, "src": null, "dest": null, "note": "add `signal: AbortSignal.timeout(10_000)` to every fetch the probe lists" },
+    { "gate": 10, "src": "templates/csrf.ts", "dest": "lib/server/csrf.ts", "note": "call isTrustedOrigin(req) in middleware.ts for every non-GET request and return 403 when false" },
+    { "gate": 11, "src": "templates/securityHeaders.ts", "dest": "lib/server/securityHeaders.ts", "note": "return SECURITY_HEADERS from headers() in next.config.ts for source '/(.*)'" },
+    { "gate": 12, "src": null, "dest": null, "note": "give every text field a .max() and add a nightly job that deletes old log rows" },
+    { "gate": 13, "src": null, "dest": null, "note": "add app/privacy/page.tsx that states what is stored and for how long, and link it from the layout" }
+  ]
+}
