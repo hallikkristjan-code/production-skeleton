@@ -188,6 +188,10 @@ const CALL_RE = /\bfetch\(|\baxios(\.[a-z]+)?\(|\brequests\.(get|post|put|patch|
 const GUARD_RE = /\bsignal\b|\btimeout\b|AbortSignal|AbortController/;
 // fetch('/api/x') or fetch(`/api/${id}`) is same-origin, not an external call.
 const SAME_ORIGIN_RE = /\bfetch\(\s*[`'"]\/(?!\/)/;
+// Cloudflare Workers: `env.ASSETS.fetch(req)` is a binding, `.fetch(request, env, ctx)` hands the
+// request to another handler, and `async fetch(request, env, ctx) {` defines one. None leaves the
+// platform, so none needs a timeout.
+const NOT_A_CALL_RE = /\benv\.[A-Za-z_]+\.fetch\(|\.fetch\([^)]*\benv\b|\b(async\s+|function\s+)fetch\s*\(|\bfetch\([^)]*\)\s*(:[^{]*)?\{\s*$/;
 
 function gate9(repo) {
   const violations = [];
@@ -195,7 +199,7 @@ function gate9(repo) {
   for (const f of repo.sourceFiles()) {
     const lines = (repo.read(f) ?? "").split("\n");
     for (let i = 0; i < lines.length; i++) {
-      if (!CALL_RE.test(lines[i]) || SAME_ORIGIN_RE.test(lines[i])) continue;
+      if (!CALL_RE.test(lines[i]) || SAME_ORIGIN_RE.test(lines[i]) || NOT_A_CALL_RE.test(lines[i])) continue;
       calls++;
       const window = lines.slice(i, i + 7).join("\n");
       if (!GUARD_RE.test(window)) violations.push({ file: f, line: i + 1 });

@@ -82,3 +82,17 @@ test("gate 9: relative same-origin fetches are not external calls", () => {
   assert.equal(mixed.status, "FAIL");
   assert.match(mixed.note, /1 of 1 calls/);
 });
+
+test("gate 9: Cloudflare Workers fetch patterns are not external calls (binding, handler delegation, handler definition)", () => {
+  const r = run(9, {
+    ".env.example": "",
+    "src/assets.ts": "const res = await c.env.ASSETS.fetch(c.req.raw);\n",
+    "src/index.ts": "export default {\n  fetch: async (request, env, ctx) => withHeaders(await getProvider(env).fetch(request, env, ctx)),\n};\n",
+    "src/mcp.ts": "export const mcpApi = {\n  async fetch(request: Request, env: Env, ctx: ExecutionContext) {\n    return new Response('ok');\n  },\n};\n",
+    "src/github.ts": "const r = await fetch('https://api.github.com/user', { signal: AbortSignal.timeout(5000) });\n",
+  });
+  assert.equal(r.status, "PASS");
+  assert.match(r.note, /1 external call/);
+  const bad = run(9, { "src/a.ts": "const r = await fetch('https://example.com/x');\n" });
+  assert.equal(bad.status, "FAIL");
+});
