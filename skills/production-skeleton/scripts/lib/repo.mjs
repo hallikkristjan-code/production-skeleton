@@ -14,6 +14,8 @@ const SCAFFOLD_PATH_RE = /(^|\/)templates?\//;
 const PAGE_TEMPLATE_RE = /\.(html?|jinja2?|j2|txt)$/;
 const TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$|_test\.py$|(^|\/)test_[^/]*\.py$|(^|\/)conftest\.py$|(^|\/)tests(_[^/]*)?\.py$/;
 const SOURCE_EXT_RE = /\.([cm]?[jt]sx?|py)$/;
+// A .d.ts holds type declarations, not calls: worker-configuration.d.ts must not fail gate 9.
+const DECLARATION_RE = /\.d\.[cm]?ts$/;
 // A whole-line comment is never evidence: "// TODO: add csrf" must not pass gate 10.
 // Markdown is exempt — there `#` starts a heading.
 const COMMENT_LINE_RE = /^\s*(\/\/|#|\/\*|\*|--|<!--)/;
@@ -44,7 +46,7 @@ export function loadRepo(root) {
   const exists = (rel) => existsSync(join(root, rel));
   const isTestPath = (rel) => TEST_PATH_RE.test(rel) || TEST_FILE_RE.test(rel) ||
     (SCAFFOLD_PATH_RE.test(rel) && !PAGE_TEMPLATE_RE.test(rel));
-  const sourceFiles = () => files.filter((f) => SOURCE_EXT_RE.test(f) && !isTestPath(f));
+  const sourceFiles = () => files.filter((f) => SOURCE_EXT_RE.test(f) && !DECLARATION_RE.test(f) && !isTestPath(f));
   const grep = (re, filter = files) => {
     const hits = [];
     for (const file of filter) {

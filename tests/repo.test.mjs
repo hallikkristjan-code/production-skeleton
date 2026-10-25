@@ -32,3 +32,11 @@ test("sourceFiles excludes tests, fixtures and eval dirs", () => {
   const repo = loadRepo(root);
   assert.deepEqual(repo.sourceFiles(), ["app/page.tsx", "lib/a.ts", "scripts/d.mjs"]);
 });
+
+test("sourceFiles: TypeScript declaration files are types, not code (worker-configuration.d.ts is not a fetch call)", () => {
+  const repo = loadRepo(makeRepo({
+    "worker-configuration.d.ts": "declare function fetch(input: string): Promise<Response>;",
+    "src/app.ts": "export const a = 1;",
+  }));
+  assert.deepEqual(repo.sourceFiles(), ["src/app.ts"]);
+});
