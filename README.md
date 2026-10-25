@@ -203,6 +203,10 @@ continuity, identity — because a day-zero file cannot fix those. Roughly:
 
 - A real app: 2/13 gates before its audit, 8/13 after the fixes
   ([docs/retro-eval.md](docs/retro-eval.md)).
+- A second app of mine, started with the skeleton on day zero (Hono on
+  Cloudflare Workers, a stack with no adapter here): 13/13 after 200 commits,
+  with the restore drill two days old because the human-gates register kept
+  asking for it.
 - A fixture with five planted holes: the probe finds the three a file can
   show, and the audit finds all five ([docs/eval-skeptic.md](docs/eval-skeptic.md)).
 - A real app of about 285 files, checked against the 18 findings of a deep
