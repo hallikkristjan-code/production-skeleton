@@ -133,12 +133,28 @@ function gate4(repo, ctx) {
 const TRACKER_INIT_RE = /Sentry\.init\(|sentry_sdk\.init\(|from ["']@sentry\/|new Rollbar\(|rollbar\.init|Bugsnag\.start\(|bugsnag\.start|Honeybadger\.configure|honeybadger\.configure/;
 const DSN_KEY_RE = /^#?\s*[A-Z0-9_]*(DSN|SENTRY|ROLLBAR|BUGSNAG|HONEYBADGER)[A-Z0-9_]*=/m;
 
+// A hand-rolled path: a function that records or reports errors, plus the address the digest or
+// alert goes to. Writing errors to a table is a log, not a person, so the address is required.
+const CUSTOM_ERROR_FN_RE = /\b(export\s+)?(async\s+)?function\s+(recordError|reportError|notifyError|alertError|sendAlert|runErrorDigest|errorDigest)\b|\bconst\s+(recordError|reportError|notifyError|alertError|sendAlert)\s*=/;
+const ALERT_KEY_RE = /\b((ALERT|ERROR|ERRORS|OPS|ONCALL|ADMIN)_(EMAIL|WEBHOOK|URL)|SLACK_WEBHOOK(_URL)?|DISCORD_WEBHOOK(_URL)?)\b/;
+// Where a Cloudflare Worker or a Node app names its plain config vars.
+const CONFIG_FILES = [".env.example", ".env.sample", ".env.template", ".dev.vars.example", "wrangler.jsonc", "wrangler.json", "wrangler.toml"];
+
 function gate5(repo) {
   const init = repo.grep(TRACKER_INIT_RE, repo.sourceFiles())[0];
-  if (!init) return FAIL("no error tracker init (Sentry/Rollbar/Bugsnag/Honeybadger) in source");
-  const example = envExample(repo);
-  if (!example || !DSN_KEY_RE.test(repo.read(example) ?? "")) return FAIL(`tracker init at ${loc(init)} but no DSN key in .env.example`);
-  return PASS(`tracker init at ${loc(init)}, DSN named in ${example}`);
+  if (init) {
+    const example = envExample(repo);
+    if (!example || !DSN_KEY_RE.test(repo.read(example) ?? "")) return FAIL(`tracker init at ${loc(init)} but no DSN key in .env.example`);
+    return PASS(`tracker init at ${loc(init)}, DSN named in ${example}`);
+  }
+  const custom = repo.grep(CUSTOM_ERROR_FN_RE, repo.sourceFiles())[0];
+  if (!custom) return FAIL("no error tracker init (Sentry/Rollbar/Bugsnag/Honeybadger) and no recordError/reportError function in source");
+  const fn = custom.text.match(CUSTOM_ERROR_FN_RE)[0].split(/\s+|=/).filter((w) => /Error|Alert|Digest/.test(w))[0];
+  for (const file of CONFIG_FILES) {
+    const key = (repo.read(file) ?? "").match(ALERT_KEY_RE)?.[0];
+    if (key) return PASS(`${fn} at ${loc(custom)}, alert address ${key} in ${file}`);
+  }
+  return FAIL(`${fn} at ${loc(custom)} but no alert address (ALERT_EMAIL, *_WEBHOOK) in ${CONFIG_FILES.slice(0, 2).join(", ")} or wrangler config: errors are logged, not delivered`);
 }
 
 const HEALTH_PATH_RE = /(^|\/)(api\/)?healthz?(\.[cm]?[jt]sx?|\/route\.[cm]?[jt]sx?|\/index\.[cm]?[jt]sx?)$/;

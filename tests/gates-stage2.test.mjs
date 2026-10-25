@@ -96,3 +96,23 @@ test("gate 9: Cloudflare Workers fetch patterns are not external calls (binding,
   const bad = run(9, { "src/a.ts": "const r = await fetch('https://example.com/x');\n" });
   assert.equal(bad.status, "FAIL");
 });
+
+test("gate 5: a hand-rolled error path passes only when it ends at a named alert address", () => {
+  const ok = run(5, {
+    "src/jobs/errors.ts": "export async function recordError(db, source, e) { await db.prepare('insert into errors').run(); }\nexport async function runErrorDigest(db, to, mail) { await mail.send(to, 'errors'); }\n",
+    "src/index.ts": "import { recordError, runErrorDigest } from './jobs/errors';\ntry { await x(); } catch (e) { await recordError(env.DB, 'job', e); }\nawait runErrorDigest(env.DB, env.ALERT_EMAIL, mail);\n",
+    "wrangler.jsonc": '{ "vars": { "ALERT_EMAIL": "" } }\n',
+  });
+  assert.equal(ok.status, "PASS");
+  assert.match(ok.note, /recordError at src\/jobs\/errors\.ts:1/);
+  assert.match(ok.note, /ALERT_EMAIL in wrangler\.jsonc/);
+  // Writing errors to a table is a log, not a person: without an alert address it still fails.
+  const logOnly = run(5, {
+    "src/jobs/errors.ts": "export async function recordError(db, source, e) { await db.prepare('insert into errors').run(); }\n",
+    "src/index.ts": "try { await x(); } catch (e) { await recordError(env.DB, 'job', e); }\n",
+    ".env.example": "DATABASE_URL=\n",
+  });
+  assert.equal(logOnly.status, "FAIL");
+  assert.match(logOnly.note, /recordError at src\/jobs\/errors\.ts:1/);
+  assert.match(logOnly.note, /no alert address/);
+});
