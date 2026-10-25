@@ -12,6 +12,9 @@ repo against 13 gates with a read-only probe, keeps a register of the things
 only a human can do, and generates the missing files for known stacks.
 `skeptic-review` (same repo) is the audit that proves the floor holds.
 
+**Contents:** Commands · Session start · Statuses · Stages · HUMAN-GATES.md ·
+Evidence paths · What the probe does not do · After the scorecard
+
 ## Commands
 
 | Say | Runs | Changes files? |
@@ -88,6 +91,10 @@ things it cannot do itself (secrets, DNS, vendor accounts).
 
 ## Evidence paths (fixed, convention over configuration)
 
+- `.env.example` (or `.env.sample` / `.env.template`) — every env var read in
+  source needs a key there; and no `.env*` other than those may be tracked in
+  git. A tracked one FAILs gate 3 with its first-commit date, because adding it
+  to `.gitignore` later removes nothing from history: rotate first, then purge.
 - `docs/ops/restore-drill.md` — first `YYYY-MM-DD` in the file is the drill date.
 - `docs/ops/rollback.md` — must mention code/deploy, schema/migration, and data.
 - a file or route named `privacy` (English, eight other languages —

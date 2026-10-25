@@ -14,6 +14,10 @@ const list = (hits, n = 5) =>
   hits.slice(0, n).map(loc).join(", ") + (hits.length > n ? `, +${hits.length - n} more` : "");
 
 const envExample = (repo) => repo.files.find((f) => /^\.env\.(example|sample|template)$/.test(f));
+// .env, .env.local, apps/web/.env.production — but not the example/sample/template files.
+const ENV_FILE_RE = /(^|\/)\.env(\.[^/]+)?$/;
+const ENV_EXAMPLE_RE = /\.(example|sample|template)$/;
+const committedEnvFiles = (repo) => repo.tracked().filter((f) => ENV_FILE_RE.test(f) && !ENV_EXAMPLE_RE.test(f));
 
 // ---------- stage 1 ----------
 
@@ -89,6 +93,14 @@ const ENV_IGNORE = new Set(["NODE_ENV", "CI", "PORT", "HOME", "PATH", "TZ", "NEX
 const ENV_READ_RE = /process\.env(?:\.([A-Z][A-Z0-9_]*)|\[["']([A-Z][A-Z0-9_]*)["']\])|os\.environ(?:\.get)?\(?\[?["']([A-Z][A-Z0-9_]*)["']|os\.getenv\(["']([A-Z][A-Z0-9_]*)["']/g;
 
 function gate3(repo) {
+  // A committed env file is a leak whatever .env.example says: adding it to .gitignore
+  // later removes nothing from history. Rotation first, history purge second.
+  const leaked = committedEnvFiles(repo);
+  if (leaked.length) {
+    const first = leaked[0];
+    const since = repo.firstCommitDate(first);
+    return FAIL(`${first} tracked in git${since ? ` since ${since}` : ""}${leaked.length > 1 ? ` (+${leaked.length - 1} more)` : ""}: rotate every key in it, then purge it from history`);
+  }
   const reads = new Map(); // name → first location
   for (const f of repo.sourceFiles()) {
     const text = repo.read(f) ?? "";

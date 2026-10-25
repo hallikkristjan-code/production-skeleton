@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 
 export const IGNORE_DIRS = new Set([
@@ -17,6 +18,8 @@ const SOURCE_EXT_RE = /\.([cm]?[jt]sx?|py)$/;
 // Markdown is exempt — there `#` starts a heading.
 const COMMENT_LINE_RE = /^\s*(\/\/|#|\/\*|\*|--|<!--)/;
 export const isCommentLine = (file, line) => !/\.md$/i.test(file) && COMMENT_LINE_RE.test(line);
+
+const git = (cwd, args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 });
 
 export function loadRepo(root) {
   const files = [];
@@ -55,5 +58,22 @@ export function loadRepo(root) {
     return hits;
   };
 
-  return { root, files, read, exists, grep, isTestPath, sourceFiles };
+  // Git-tracked paths relative to root ([] outside a git repo or without git). A file that
+  // is tracked is published to everyone with clone access, whatever .gitignore says today.
+  let trackedCache;
+  const tracked = () => {
+    if (trackedCache) return trackedCache;
+    try {
+      trackedCache = git(root, ["ls-files", "-z"]).split("\0").filter(Boolean);
+    } catch { trackedCache = []; }
+    return trackedCache;
+  };
+  // YYYY-MM-DD of the commit that first added rel, or null.
+  const firstCommitDate = (rel) => {
+    try {
+      return git(root, ["log", "--diff-filter=A", "--follow", "--format=%as", "--", rel]).trim().split("\n").filter(Boolean).at(-1) ?? null;
+    } catch { return null; }
+  };
+
+  return { root, files, read, exists, grep, isTestPath, sourceFiles, tracked, firstCommitDate };
 }

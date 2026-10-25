@@ -1,4 +1,7 @@
 import { test } from "node:test";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { makeRepo, TODAY } from "./helpers.mjs";
 import { loadRepo } from "../skills/production-skeleton/scripts/lib/repo.mjs";
@@ -101,4 +104,37 @@ test("gate 4: HUMAN-GATES.md missing / fresh / stale", () => {
   const stale = run(4, { "HUMAN-GATES.md": "- [ ] 2026-08-01 old thing\n" });
   assert.equal(stale.status, "STALE");
   assert.match(stale.note, /old thing/);
+});
+
+// A committed .env is a leak: .gitignore added later does not remove it from history.
+const gitRepo = (files, trackedEnv) => {
+  const root = makeRepo(files);
+  const git = (...a) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...a], { cwd: root, stdio: "pipe" });
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-q", "-m", "init", "--date=2026-01-02T00:00:00Z");
+  if (trackedEnv) {
+    writeFileSync(join(root, ".gitignore"), ".env\n");
+    git("add", ".gitignore");
+    git("commit", "-q", "-m", "ignore", "--date=2026-02-03T00:00:00Z");
+  }
+  return root;
+};
+test("gate 3: a git-tracked .env fails even when .env.example is complete", () => {
+  const root = gitRepo({ ".env.example": "FOO=\n", ".env": "FOO=secret\n", "src/a.ts": "process.env.FOO" }, true);
+  const r = gateById(3).run(loadRepo(root), ctx);
+  assert.equal(r.status, "FAIL");
+  assert.match(r.note, /\.env tracked in git since 2026-01-02/);
+  assert.match(r.note, /rotate/);
+});
+test("gate 3: an untracked .env next to a complete .env.example passes; nested .env.production fails", () => {
+  const ok = gitRepo({ ".gitignore": ".env\n", ".env.example": "FOO=\n", ".env": "FOO=secret\n", "src/a.ts": "process.env.FOO" });
+  assert.equal(gateById(3).run(loadRepo(ok), ctx).status, "PASS");
+  const bad = gitRepo({ ".env.example": "FOO=\n", "apps/web/.env.production": "FOO=x\n", "src/a.ts": "process.env.FOO" });
+  const r = gateById(3).run(loadRepo(bad), ctx);
+  assert.equal(r.status, "FAIL");
+  assert.match(r.note, /apps\/web\/\.env\.production tracked/);
+});
+test("gate 3: outside a git repo the leak check is skipped", () => {
+  assert.equal(run(3, { ".env.example": "FOO=\n", ".env": "FOO=1\n", "src/a.ts": "process.env.FOO" }).status, "PASS");
 });

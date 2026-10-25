@@ -5,6 +5,9 @@ description: Evidence-based production-readiness audit in 13 sections — every 
 
 # Skeptic Review — evidence-based production-readiness audit
 
+**Contents:** Overview · Process (6 steps) · Report shape (+ "I can do this now"
+rules) · Checklist (13 sections) · Red flags · Typical mistakes
+
 ## Overview
 
 A 13-section skeptic's checklist, graded ONLY on evidence found in the code.
@@ -100,6 +103,10 @@ written here so reports are comparable.
    - **Side paths:** where a guard exists (`requireAdmin`, a version check, a
      scope check), list the other handlers for the same resource and check
      each calls it. A handler that re-implements half the guard counts as missing.
+   - **Fail-open:** for each guard, ask what happens when its input is absent
+     or stale — no token, no role claim, an expired session, a revoked key.
+     ✅ needs the request to stop (401/403, cite the line); a guard that only
+     acts when the input is present and otherwise falls through is ❌.
    - **Labels vs behaviour:** a tool or scope named read-only must not write;
      a write-only grant must not return personal data.
    - **Secrets per environment:** for each production secret, list which
@@ -131,6 +138,18 @@ written here so reports are comparable.
    human confirmation? hallucination guards (schema validation,
    human-in-the-loop)? prompt-injection surface (which external data reaches
    a prompt)?
+   **If the app has a tool-calling agent** (MCP server, function calling, an
+   agent loop that reads or writes data):
+   - **Whose key:** cite the credential each tool uses. The owner's service
+     key or the user's full session is ❌; a key scoped to the task and the
+     caller's permissions is ✅. A read-only tool on a write-capable key is ❌.
+   - **Memory:** list every write to agent memory, a vector store or a
+     "notes" table whose content came from outside text (a web page, an
+     e-mail, a document, another tool's output). ✅ needs validation or a
+     human step before the write; untrusted text that persists and is read
+     back into a later prompt is ❌.
+   - **Ceiling:** per-user or per-session caps on model calls, tool calls and
+     spend, cited. None is ❌ (one runaway loop is the whole month's budget).
 8. **Automation** — handling of bad input (sanity checks, limits such as
    max-delete)? protection against absurd values? change log? rollback path?
    **Read-then-write:** every counter, limit, "already sent" flag or

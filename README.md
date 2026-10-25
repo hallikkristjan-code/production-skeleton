@@ -4,6 +4,12 @@ After every vibe-coded app, someone asks: are there backups? Who keeps the
 dependencies updated? How do you roll back a bad release? These two skills for
 coding agents (Claude Code, Codex) answer that skeptic.
 
+The question underneath is not "is the code secure" but **"does the app survive
+its first bad day"**: a dead disk, a leaked key, a release that has to come
+back, a partner API that hangs. Security review tools answer the first
+question. These two answer the second, and point at the file and line for each
+answer.
+
 **production-skeleton** is for a new app, on day zero, before the first feature. It reads
 the repo and answers 13 questions. Every answer points to a file and line. It
 changes nothing unless you ask; then it writes the missing files and never
@@ -114,7 +120,7 @@ a library, where gates 5–13 are N/A).
 |---|---|---|---|
 | 1 | CI runs tests and build on every push | 1 | workflow with a push/PR trigger and a test step (and a build step if there is a build script); no `pull_request_target` workflow hands repo secrets to fork PRs without an `environment:` |
 | 2 | Dependency security updates are automatic | 1 | `.github/dependabot.yml`, a Renovate config, or a workflow running a dependency scanner (OSV-Scanner, Trivy, Grype, Snyk, Socket, Aikido); then `npm audit` on the lockfile must report 0 high/critical, or `pip-audit` 0 findings on `requirements.txt` or a `uv export` of `uv.lock` (`--no-audit` skips it) |
-| 3 | Every env var is named in `.env.example` | 1 | every `process.env.X` / `os.environ[...]` read in source has a key in the example file |
+| 3 | Every env var is named in `.env.example` | 1 | every `process.env.X` / `os.environ[...]` read in source has a key in the example file, and no `.env`, `.env.local` or `.env.production` is tracked in git (a committed one FAILs with the date it was first added: rotate, then purge history) |
 | 4 | Human-gates register is current | 1 | `HUMAN-GATES.md` exists and no open line is older than `stale_days` or past its `due:` date |
 | 5 | Errors reach a human | 2 | an error-tracker init in source and its DSN key in `.env.example` |
 | 6 | `/health` answers with the deployed version | 2 | a health route (live: 200 and a version in the body) |
@@ -141,7 +147,9 @@ Gates 7, 9 and 12 are still heuristics. The live checks and the audit are the
 stronger proof.
 
 Deliberately not in the list: performance, SEO, accessibility, code quality,
-deep OWASP. Other tools do those; this one is the floor.
+deep OWASP. Other tools do those; this one is the floor. An OWASP skill such as
+[agamm/claude-code-owasp](https://github.com/agamm/claude-code-owasp) asks
+whether the code is secure; this one asks whether the app survives. Run both.
 
 ## HUMAN-GATES.md — the part no tool can do
 
