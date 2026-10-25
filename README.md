@@ -10,10 +10,12 @@ back, a partner API that hangs. Security review tools answer the first
 question. These two answer the second, and point at the file and line for each
 answer.
 
-**production-skeleton** is for a new app, on day zero, before the first feature. It reads
-the repo and answers 13 questions. Every answer points to a file and line. It
-changes nothing unless you ask; then it writes the missing files and never
-overwrites one.
+**production-skeleton** is the foundation, not an audit. Run it before the
+first feature, in an empty folder if you like: it says what must exist before
+the first line of real code, and writes the missing files when you ask (never
+overwriting one). Later, on a grown app, the same command tells you in 60
+seconds whether that foundation is still there. Thirteen questions, every
+answer pointing to a file and line:
 
 1. Do tests and the build run on every push?
 2. Do dependency security updates arrive automatically, with no known

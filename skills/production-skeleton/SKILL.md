@@ -1,15 +1,17 @@
 ---
 name: production-skeleton
-description: Day-0 production floor for any app — 13 gates (CI, dependency updates, env example, human-gates register, error tracking, /health, backup drill, rollback runbook, timeouts, CSRF, security headers, limits + retention, privacy page). Use on /skeleton (read-only scorecard), /skeleton fix (generate missing files, dry-run by default), or before the first feature of a new project. Also read HUMAN-GATES.md aloud at session start when it has open lines.
+description: The foundation to lay before the first feature, not an audit — 13 gates (CI, dependency updates, env example, human-gates register, error tracking, /health, backup drill, rollback runbook, timeouts, CSRF, security headers, limits + retention, privacy page). Use before the first feature of a new project, even in an empty folder; /skeleton shows which gates exist (read-only scorecard), /skeleton fix writes the missing files (dry-run by default); on a grown app it checks the foundation is still there. Also read HUMAN-GATES.md aloud at session start when it has open lines.
 ---
 
 # production-skeleton
 
 **Skeleton, not audit. Probes, not prose. 13 gates, not 90.**
 
-A skeleton is the floor you build before the first feature. This skill scores a
-repo against 13 gates with a read-only probe, keeps a register of the things
-only a human can do, and generates the missing files for known stacks.
+A skeleton is the floor you build before the first feature. Run this skill
+first, in an empty folder if need be: it says which of the 13 gates exist,
+generates the missing files for known stacks, and keeps a register of the
+things only a human can do. On a grown app the same probe checks the floor is
+still there.
 `skeptic-review` (same repo) is the audit that proves the floor holds.
 
 **Contents:** Commands · Session start · Statuses · Stages · HUMAN-GATES.md ·
