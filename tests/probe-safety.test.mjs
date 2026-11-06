@@ -477,6 +477,38 @@ test("F09: schema rollback is a new forward migration, checked with a dry run ag
   assert.equal(run(8, { "docs/ops/rollback.md": text }).status, "PASS");
 });
 
+// Found by following both guides on a throwaway Postgres 17 with the Supabase CLI, 2026-11-06.
+test("rollback: a restored copy needs its migration history back before db push", () => {
+  const text = template("rollback.md");
+  assert.match(text, /supabase migration repair --status applied/);
+  assert.match(text, /relation \.\.\. already exists/);
+  assert.match(text, /--remote="\$ISOLATED_DATABASE_URL"/);
+  assert.match(text, /--db-url/, "CLI 2 has no --remote");
+  assert.match(text, /empty database/i, "a failed restore leaves an empty target where db push looks green");
+});
+
+test("rollback: a compensating migration brings the column back, not its values", () => {
+  assert.match(template("rollback.md"), /comes back empty/);
+});
+
+test("rollback: data goes between two databases by file, not a bare INSERT … SELECT", () => {
+  const text = template("rollback.md");
+  assert.doesNotMatch(text, /targeted `INSERT … SELECT`/);
+  assert.match(text, /\\copy/);
+  assert.match(text, /--single-transaction/);
+  assert.match(text, /overriding system value/i);
+  assert.match(text, /on conflict/i);
+  assert.match(text, /rows\.csv/);
+  assert.match(text, /plaintext/);
+  assert.equal(run(8, { "docs/ops/rollback.md": text }).status, "PASS");
+});
+
+test("restore drill: the dump carries no migration history, and the guide says what follows", () => {
+  const text = template("restore-drill.md");
+  assert.match(text, /supabase_migrations/);
+  assert.match(text, /supabase migration repair/);
+});
+
 test("review: nested workspace manifests remain explicitly unverified", () => {
   const r = runAudit(loadRepo(makeRepo({ "package.json": '{"workspaces":["apps/*"]}', "apps/web/package.json": '{"dependencies":{"next":"16"}}' })));
   assert.ok(r.parts?.some((p) => p.manifest === "apps/web/package.json" && p.skipped));

@@ -23,6 +23,11 @@ functions, row-level-security policies. It does not hold:
 
 - `auth` — users, password hashes, identities. Covered by: (fill in, or "nothing yet")
 - Storage — the files in the buckets and their metadata. Covered by: (fill in, or "nothing yet")
+- `supabase_migrations` — the migration history. On a restored database
+  `supabase db push` starts again from the first migration and stops on
+  `relation ... already exists`. Before pushing to one, run
+  `supabase migration repair --status applied <versions>` for every migration
+  the dump holds.
 - roles and grants, other schemas, Edge Functions, project settings, secrets.
 
 An app with logins or uploads is not restored by this dump alone. A drill that

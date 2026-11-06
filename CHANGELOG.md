@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-11-06
 
 A reliability round before wider distribution. No new gates, no new adapters.
 
@@ -16,7 +16,12 @@ A reliability round before wider distribution. No new gates, no new adapters.
   unsupported source files and dead helper imports no longer give misleading passes.
 - Rollback guidance uses a reviewed compensating migration, target verification and
   dry-run; an isolated database rehearsal remains necessary.
-- Regression suite: 201 tests on Windows with Node 20, 22 and 24. A generated Next 16
+- Rollback and restore guides, corrected after following them for real: a restored
+  database needs `supabase migration repair` before `db push`, a failed restore
+  leaves an empty target where `db push` looks green, a dropped column comes back
+  empty, and rows reach another database by `\copy` and a staging table, not by
+  a bare `INSERT … SELECT`.
+- Regression suite: 205 tests on Ubuntu and Windows with Node 20, 22 and 24. A generated Next 16
   application builds successfully; database restore and hosted workflow checks remain manual.
 
 ### Probe: fewer false PASSes
@@ -67,7 +72,11 @@ A reliability round before wider distribution. No new gates, no new adapters.
   Next.js 15.5.29 with `app/`.
 - The restore command against a throwaway Postgres 17: it stops and rolls back
   on both errors the drill names, and restores cleanly once they are handled.
-- Not checked: the backup workflow on GitHub Actions, a restore into a real
+- The rollback and restore guides, step by step, on a throwaway Postgres 17 with
+  Supabase CLI 3.0.0, and the history commands on CLI 2.122.1. `auth` was a stub
+  table, not a Supabase project: bad migration, compensation, isolated rehearsal
+  with RLS checks, row recovery and both errors the drill names.
+- Not checked: the backup workflow on GitHub Actions, either guide against a real
   Supabase project, macOS.
 
 ## 0.1.0 — 2026-10-20

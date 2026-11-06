@@ -108,7 +108,7 @@ things it cannot do itself (secrets, DNS, vendor accounts).
   source needs a key there; and no `.env*` other than those may be tracked in
   git. A tracked one FAILs gate 3 with its first-commit date, because adding it
   to `.gitignore` later removes nothing from history: rotate first, then purge.
-- `docs/ops/restore-drill.md` — first `YYYY-MM-DD` in the file is the drill date.
+- `docs/ops/restore-drill.md` — the `YYYY-MM-DD` on a `Date:`, `Last drill:`, `Last run:` or `Completed:` line is the drill date. A planned date elsewhere in the file does not count.
 - `docs/ops/rollback.md` — must mention code/deploy, schema/migration, and data.
 - a file or route named `privacy` (English, eight other languages —
   privacidad, datenschutz, andmekaitse, confidentialité, integritetspolicy,
