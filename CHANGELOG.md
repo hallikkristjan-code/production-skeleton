@@ -41,6 +41,9 @@ A reliability round before wider distribution. No new gates, no new adapters.
   what the dump leaves out (auth users, Storage files, grants).
 - Restore drill template: `psql -v ON_ERROR_STOP=1 --single-transaction`, plus
   checks for users, permissions and files.
+- CI and backup templates use `actions/checkout@v7` and
+  `actions/setup-node@v7`, the versions this repository's own CI runs on. A
+  test keeps them in step.
 
 ### Checked by hand for this release
 

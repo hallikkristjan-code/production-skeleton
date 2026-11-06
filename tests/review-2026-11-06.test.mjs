@@ -316,6 +316,20 @@ test("fix: connection() needs Next.js 15, so an older Next gets no health route"
   }
 });
 
+// Dependabot bumps this repo's own workflow, not the templates `fix --write` hands to other
+// projects. An action both use must be on the version this repo's CI runs green on.
+test("adapter templates pin shared actions to the version this repo's own CI uses", () => {
+  const own = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  const pins = (text) => Object.fromEntries([...text.matchAll(/uses:\s*"?(actions\/[\w-]+)@(v\d+)/g)].map((m) => [m[1], m[2]]));
+  const ours = pins(own);
+  assert.ok(ours["actions/checkout"] && ours["actions/setup-node"]);
+  for (const name of ["ci.yml", "backup.yml"]) {
+    for (const [action, version] of Object.entries(pins(template(name)))) {
+      if (ours[action]) assert.equal(version, ours[action], `${name}: ${action}`);
+    }
+  }
+});
+
 // ---------- backup template: scope, retention, a restore that stops on errors ----------
 
 test("backup template: dumps are not committed to the repo unless the owner opts in", () => {
