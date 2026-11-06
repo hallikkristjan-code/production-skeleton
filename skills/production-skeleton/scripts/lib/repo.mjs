@@ -16,10 +16,54 @@ const TEST_FILE_RE = /\.(test|spec)\.[cm]?[jt]sx?$|_test\.py$|(^|\/)test_[^/]*\.
 const SOURCE_EXT_RE = /\.([cm]?[jt]sx?|py)$/;
 // A .d.ts holds type declarations, not calls: worker-configuration.d.ts must not fail gate 9.
 const DECLARATION_RE = /\.d\.[cm]?ts$/;
-// A whole-line comment is never evidence: "// TODO: add csrf" must not pass gate 10.
+// A comment is never evidence: "// TODO: add csrf" must not pass gate 10, "# npm test" is not a
+// CI step. What starts a comment depends on the file: `#` is a comment in Python and YAML but a
+// private field in JavaScript; "/*" opens a comment in TypeScript but is a path in a _headers file.
+const SLASH_COMMENT_FILE_RE = /\.[cm]?[jt]sx?$/;
+const HASH_COMMENT_FILE_RE = /\.(py|ya?ml|toml|sh)$|(^|\/)\.env[^/]*$/;
+// Every other file (SQL, HTML, JSON, …): only a line that starts with a comment marker is dropped.
 // Markdown is exempt — there `#` starts a heading.
-const COMMENT_LINE_RE = /^\s*(\/\/|#|\/\*|\*|--|<!--)/;
-export const isCommentLine = (file, line) => !/\.md$/i.test(file) && COMMENT_LINE_RE.test(line);
+const OTHER_COMMENT_LINE_RE = /^\s*(\/\/|#|\/\*|\*|--|<!--)/;
+
+/** One line with its comments removed. Quote-aware: "//", "#" or a block-comment opener inside a
+ * string stays. `state.block` carries an open block comment to the next line. Heuristic, not a
+ * parser: a string that spans lines, a quote inside a regex literal or an apostrophe in JSX/YAML
+ * text leaves the rest of that line as it is. */
+function stripLine(line, { slash, hash }, state) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (state.block) {
+      if (line.startsWith("*/", i)) { state.block = false; i++; }
+      continue;
+    }
+    if (quote) {
+      out += c;
+      if (c === "\\") out += line[++i] ?? "";
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; out += c; continue; }
+    if (slash && line.startsWith("/*", i) && line[i - 1] !== "\\") { state.block = true; i++; continue; }
+    // A line comment starts a token: `x; // note`, `- run: x # note` — not `https://…` or `a#b`.
+    const startsToken = i === 0 || /[\s;,(){}]/.test(line[i - 1]);
+    if (startsToken && ((slash && line.startsWith("//", i)) || (hash && c === "#"))) break;
+    out += c;
+  }
+  return out;
+}
+
+/** The lines of a file with comments blanked or cut; line numbers stay the same. */
+export function codeLines(file, text) {
+  // CRLF checkouts (Windows, core.autocrlf): a trailing \r must not ride along on every line.
+  const lines = text.split(/\r?\n/);
+  if (/\.md$/i.test(file)) return lines;
+  const family = { slash: SLASH_COMMENT_FILE_RE.test(file), hash: HASH_COMMENT_FILE_RE.test(file) };
+  if (!family.slash && !family.hash) return lines.map((l) => (OTHER_COMMENT_LINE_RE.test(l) ? "" : l));
+  const state = { block: false };
+  return lines.map((l) => stripLine(l, family, state));
+}
 
 const git = (cwd, args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 });
 
@@ -31,7 +75,10 @@ export function loadRepo(root) {
       if (entry.isDirectory()) {
         // .claude/worktrees holds other checkouts of this repo: their files are not evidence.
         const worktrees = entry.name === "worktrees" && dir === join(root, ".claude");
-        if (!IGNORE_DIRS.has(entry.name) && !worktrees) walk(abs);
+        // A root logs/ holds run output (audit evidence, fixtures). Only the root one:
+        // app/logs/route.ts is a route.
+        const runLogs = entry.name === "logs" && dir === root;
+        if (!IGNORE_DIRS.has(entry.name) && !worktrees && !runLogs) walk(abs);
       } else if (entry.isFile()) {
         files.push(relative(root, abs).replaceAll("\\", "/"));
       }
@@ -53,8 +100,9 @@ export function loadRepo(root) {
       const text = read(file);
       if (text === null) continue;
       const lines = text.split("\n");
+      const code = codeLines(file, text);
       for (let i = 0; i < lines.length; i++) {
-        if (!isCommentLine(file, lines[i]) && re.test(lines[i])) hits.push({ file, line: i + 1, text: lines[i].trim() });
+        if (re.test(code[i])) hits.push({ file, line: i + 1, text: lines[i].trim() });
       }
     }
     return hits;
@@ -77,5 +125,8 @@ export function loadRepo(root) {
     } catch { return null; }
   };
 
-  return { root, files, read, exists, grep, isTestPath, sourceFiles, tracked, firstCommitDate };
+  /** read() with comments blanked — what a gate may treat as evidence. */
+  const code = (rel) => codeLines(rel, read(rel) ?? "");
+
+  return { root, files, read, code, exists, grep, isTestPath, sourceFiles, tracked, firstCommitDate };
 }

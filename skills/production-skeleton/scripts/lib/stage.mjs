@@ -41,8 +41,11 @@ export function declaredDeps(repo) {
   return out;
 }
 
+export const packageJson = (repo) => readJson(repo, "package.json") ?? {};
+export const packageScripts = (repo) => packageJson(repo).scripts ?? {};
+
 export function hasBuildScript(repo) {
-  return Boolean(readJson(repo, "package.json")?.scripts?.build);
+  return Boolean(packageScripts(repo).build);
 }
 
 export function detectStage(repo) {

@@ -77,8 +77,9 @@ test("gate 10/11: the same helper imported from middleware / next.config passes"
 
 test("fix --write does not turn gates 10/11 green with unwired helpers", async () => {
   const { runProbe } = await import("../skills/production-skeleton/scripts/lib/run.mjs");
-  const root = makeRepo({ ...NEXT, "HUMAN-GATES.md": "---\nstage: 3\n---\n" });
-  applyFix(root, await planFix(root, { today: TODAY }), { today: TODAY });
+  const root = makeRepo({ "package.json": '{"dependencies":{"next":"16"},"devDependencies":{"typescript":"5"}}', "vercel.json": "{}", "HUMAN-GATES.md": "---\nstage: 3\n---\n" });
+  const { written } = applyFix(root, await planFix(root, { today: TODAY }), { today: TODAY });
+  assert.ok(written.includes("lib/server/csrf.ts") && written.includes("lib/server/securityHeaders.ts"));
   const out = await runProbe(root, { today: TODAY, audit: false });
   const byId = Object.fromEntries(out.results.map((r) => [r.id, r]));
   assert.equal(byId[10].status, "FAIL");

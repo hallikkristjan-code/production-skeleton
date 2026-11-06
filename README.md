@@ -80,7 +80,7 @@ production-skeleton probe on this repo and show the scorecard". Nothing is
 written. You get this:
 
 ```
-## production-skeleton — stage 2 · 6/9 required · 10/13 total, 0 n/a
+## production-skeleton — stage 2 · 6/9 required · 9/13 total, 0 n/a
 
 Stage: deploy target: next; personal data: auth library @supabase/ssr
 
@@ -94,22 +94,42 @@ Stage: deploy target: next; personal data: auth library @supabase/ssr
 | 9 | External calls time out                   | 2     | **FAIL** | 1 of 1 calls without a timeout/signal: app/api/ai/route.ts:4    |
 | … |                                           |       |          |                                                                 |
 
-Badge: `![skeleton](https://img.shields.io/badge/skeleton-10%2F13-orange)`
+Badge: `![skeleton](https://img.shields.io/badge/skeleton-9%2F13-orange)`
 
-Read-only: nothing was changed. `fix` generates the missing files (dry-run by default).
+Read-only: nothing in this repo was changed. `fix` generates the missing files (dry-run by default).
 ```
 
 Without an agent, from a clone of this repo: `npm run probe -- <path>` (or
 `node ~/.claude/skills/production-skeleton/scripts/probe.mjs <path>` after
 installing).
-Add `--json` for machines, `--url https://your.app` for three live checks
-(health, headers, a cross-origin POST that must get a 403).
+Add `--json` for machines, `--url https://your.app` for two live checks
+(health, headers) that send GET requests only. `--csrf-post` adds one cross-origin POST to `/api/health`
+that must get a 403. It is a write request and the probe cannot know what a
+POST does on a server, so it is off by default: use it on an app you own.
 
 `/skeleton fix` prints what it would generate. `/skeleton fix --write`
 generates it — and never overwrites a file that exists. Generation needs a
 stack adapter; one ships today (Next.js + Supabase + Vercel, triggered by the
 `next` dependency). Other stacks still get the full scorecard, and `fix` says
 so instead of writing.
+
+The adapter writes only what can work in the project it finds. Routes go
+under `src/app` when that is where the app lives; a Pages Router project, or
+one where Next.js would ignore `src/`, gets a manual step instead of a route
+file. The CI workflow is an npm + TypeScript
+template, written only when `package-lock.json`, `typescript` and both a
+`test` and a `build` script are there. Otherwise the plan names what is
+missing (`skip-requires`), and with pnpm, yarn or bun you write the workflow
+yourself. The TypeScript helpers are skipped the same way in a project
+without `typescript`, and the health route in a project older than
+Next.js 15.
+
+The backup workflow it generates dumps the Postgres schema `public` only:
+no auth users, no Storage files. It keeps each encrypted dump as a 90-day
+workflow artifact, refuses to run in a public repository, and commits nothing
+to your repo unless you opt in. The restore drill it writes ships without a
+date, so gate 7 stays FAIL until you have restored into a throwaway database
+and written down what came back.
 
 ## The 13 gates
 
@@ -124,12 +144,12 @@ a library, where gates 5–13 are N/A).
 | 2 | Dependency security updates are automatic | 1 | `.github/dependabot.yml`, a Renovate config, or a workflow running a dependency scanner (OSV-Scanner, Trivy, Grype, Snyk, Socket, Aikido); then `npm audit` on the lockfile must report 0 high/critical, or `pip-audit` 0 findings on `requirements.txt` or a `uv export` of `uv.lock` (`--no-audit` skips it) |
 | 3 | Every env var is named in `.env.example` | 1 | every `process.env.X` / `os.environ[...]` read in source has a key in the example file, and no `.env`, `.env.local` or `.env.production` is tracked in git (a committed one FAILs with the date it was first added: rotate, then purge history) |
 | 4 | Human-gates register is current | 1 | `HUMAN-GATES.md` exists and no open line is older than `stale_days` or past its `due:` date |
-| 5 | Errors reach a human | 2 | an error-tracker init in source and its DSN key in `.env.example` |
+| 5 | Errors reach a human | 2 | an error-tracker init in source and its DSN key in `.env.example`; or your own reporter (`recordError`, `reportError`, `sendAlert`, …) that has a body, is called, and whose alert address (`ALERT_EMAIL`, `*_WEBHOOK`) is named in config and read on that path. Static only: the probe cannot see an alert arrive |
 | 6 | `/health` answers with the deployed version | 2 | a health route (live: 200 and a version in the body) |
 | 7 | Independent backup with a rehearsed restore | 2 | a backup job and `docs/ops/restore-drill.md` dated within `drill_max_days` |
 | 8 | Rollback runbook: code, schema, data | 2 | `docs/ops/rollback.md` mentions all three |
 | 9 | External calls time out | 2 | every `fetch`/axios/requests/httpx call has a `signal` or `timeout` nearby; `fetch('/api/…')` is same-origin and not counted |
-| 10 | Cross-origin writes are refused | 3 | an Origin/CSRF check in source (live: foreign-Origin POST → 403) |
+| 10 | Cross-origin writes are refused | 3 | an Origin/CSRF check in source (live, with `--csrf-post`: foreign-Origin POST → 403) |
 | 11 | HSTS, frame-ancestors, nosniff | 3 | all three configured (live: present in response headers) |
 | 12 | Input size limits and log retention | 3 | a max-length validator and a cleanup job with a retention period |
 | 13 | Privacy page matches the code | 3 | a page named `privacy` (or its equivalent in eight other languages, or `gdpr`, or the file named by `privacy:` in HUMAN-GATES.md), linked as a route from source |
@@ -142,11 +162,16 @@ reason, or gate 2 in a repo with no dependency manifest). Score: `x/y required �
 stage demands today, *total* is the badge.
 
 PASS means the probe found the pattern, not that it works end to end.
-Whole-line comments never count as evidence, and a CSRF or header helper
-counts only when the framework loads it or another file imports it — so
-`fix --write` alone leaves gates 10 and 11 FAIL until you wire the helpers in.
-Gates 7, 9 and 12 are still heuristics. The live checks and the audit are the
-stronger proof.
+Comments never count as evidence, whole-line, trailing or block: a commented-out
+`# npm test` is not a CI step and `// TODO add timeout` is not a timeout. A
+CSRF or header helper counts only when the framework loads it or another file
+imports it — so `fix --write` alone leaves gates 10 and 11 FAIL until you wire
+the helpers in. Gate 5 is static by nature: it shows the error path is wired
+(an empty `recordError() {}` and a key name do not pass), not that an alert
+reaches you. It cannot tell a reporter that sends from one that only logs.
+Throw one test error in production and see it arrive; that check belongs in
+`HUMAN-GATES.md`. The comment filter is a heuristic too, not a parser. Gates 7, 9 and 12 are still heuristics. The live
+checks and the audit are the stronger proof.
 
 Deliberately not in the list: performance, SEO, accessibility, code quality,
 deep OWASP. Other tools do those; this one is the floor. An OWASP skill such as
@@ -237,9 +262,11 @@ tests/                        node --test files, zero dependencies
 HUMAN-GATES.md                this repo's own register
 eval/broken-app/              the fixture
 docs/                         retro-eval.md, eval-skeptic.md
+CHANGELOG.md, SECURITY.md, CONTRIBUTING.md
 ```
 
-Zero dependencies. Node 20+. `npm test` runs the suite.
+Zero dependencies. Node 20+. `npm test` runs the suite; CI runs it on Node 20,
+22 and 24, on Linux and Windows. macOS is not tested.
 
 ## License
 

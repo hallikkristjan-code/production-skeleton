@@ -17,7 +17,7 @@ export async function runProbe(root, opts = {}) {
   let { stage, reasons } = detectStage(repo);
   if (typeof config.stage === "number") { stage = config.stage; reasons = [`stage ${stage} declared in HUMAN-GATES.md`, ...reasons]; }
 
-  const live = opts.live ?? (opts.url ? await probeUrl(opts.url) : null);
+  const live = opts.live ?? (opts.url ? await probeUrl(opts.url, { csrfPost: opts.csrfPost }) : null);
   const audit = opts.audit === false ? null : runAudit(repo);
   const ctx = { today: day, config, live, audit };
   const na = config.na ?? {};

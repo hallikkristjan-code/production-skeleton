@@ -12,7 +12,8 @@ test("HOOK_SNIPPET is valid JSON and never throws (wraps its body in try/catch)"
   assert.match(command, /catch/);
 });
 
-const NEXT = { "package.json": '{"dependencies":{"next":"16","@supabase/supabase-js":"2"},"scripts":{"build":"next build","test":"vitest run"}}', "vercel.json": "{}" };
+// The project the adapter supports: npm (lockfile committed), TypeScript, test and build scripts.
+const NEXT = { "package.json": '{"dependencies":{"next":"16","@supabase/supabase-js":"2"},"devDependencies":{"typescript":"5"},"scripts":{"build":"next build","test":"vitest run"}}', "package-lock.json": "{}", "vercel.json": "{}" };
 
 test("no adapter for a non-Next repo", async () => {
   const plan = await planFix(makeRepo({ "package.json": '{"dependencies":{"express":"4"}}' }), { today: TODAY });
@@ -59,7 +60,7 @@ test("applyFix writes files, never overwrites, appends human gates once", async 
 
 test("Next-only repo: .env.example is planned because a written file reads env vars", async () => {
   const { runProbe } = await import("../skills/production-skeleton/scripts/lib/run.mjs");
-  const root = makeRepo({ "package.json": '{"dependencies":{"next":"16"},"scripts":{"build":"next build","test":"vitest run"}}' });
+  const root = makeRepo({ "package.json": '{"dependencies":{"next":"16"},"devDependencies":{"typescript":"5"},"scripts":{"build":"next build","test":"vitest run"}}', "package-lock.json": "{}" });
   const plan = await planFix(root, { today: TODAY });
   assert.equal(plan.actions.find((a) => a.dest === ".env.example").action, "write");
   applyFix(root, plan, { today: TODAY });

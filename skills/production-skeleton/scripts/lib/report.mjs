@@ -50,7 +50,7 @@ export function renderMarkdown(out) {
     for (const l of out.humanGates.open) lines.push(`- ${l.created} ${l.text}${l.due ? ` (due: ${l.due})` : ""}`);
   }
   lines.push("");
-  lines.push("Read-only: nothing was changed. `fix` generates the missing files (dry-run by default).");
+  lines.push("Read-only: nothing in this repo was changed. `fix` generates the missing files (dry-run by default).");
   return lines.join("\n");
 }
 

@@ -1,6 +1,5 @@
 import { parseHumanGates, humanGateState, daysBetween, DEFAULTS } from "./humanGates.mjs";
 import { hasBuildScript } from "./stage.mjs";
-import { isCommentLine } from "./repo.mjs";
 
 const PASS = (note) => ({ status: "PASS", note });
 const FAIL = (note) => ({ status: "FAIL", note });
@@ -43,7 +42,7 @@ function triggerBlock(text) {
 // (and its required reviewers) any outside PR can reach them. GITHUB_TOKEN alone is scoped.
 function untrustedSecrets(repo, workflows) {
   for (const wf of workflows) {
-    const text = repo.read(wf) ?? "";
+    const text = repo.code(wf).join("\n");
     if (!/\bpull_request_target\b/.test(triggerBlock(text)) || /^\s+environment:/m.test(text)) continue;
     const secret = [...text.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map((m) => m[1]).find((n) => n !== "GITHUB_TOKEN");
     if (secret) return `${wf}: pull_request_target exposes secrets.${secret} to fork PRs — add an environment with required reviewers`;
@@ -59,7 +58,8 @@ function gate1(repo) {
   const needBuild = hasBuildScript(repo);
   const problems = [];
   for (const wf of workflows) {
-    const text = repo.read(wf) ?? "";
+    // Comments blanked: `# npm test` is a note to self, not a step that runs.
+    const text = repo.code(wf).join("\n");
     const triggers = /(^|[\s\[,])(push|pull_request|merge_request)\b/.test(triggerBlock(text));
     if (!triggers) { problems.push(`${wf}: no push/pull_request trigger`); continue; }
     if (!TEST_STEP_RE.test(text)) { problems.push(`${wf}: no test step`); continue; }
@@ -103,8 +103,8 @@ function gate3(repo) {
   }
   const reads = new Map(); // name → first location
   for (const f of repo.sourceFiles()) {
-    const text = repo.read(f) ?? "";
-    text.split("\n").forEach((line, i) => {
+    // Comments blanked: "// old config: process.env.X" reads nothing.
+    repo.code(f).forEach((line, i) => {
       for (const m of line.matchAll(ENV_READ_RE)) {
         const name = m[1] ?? m[2] ?? m[3] ?? m[4];
         if (!ENV_IGNORE.has(name) && !reads.has(name)) reads.set(name, `${f}:${i + 1}`);
@@ -140,21 +140,59 @@ const ALERT_KEY_RE = /\b((ALERT|ERROR|ERRORS|OPS|ONCALL|ADMIN)_(EMAIL|WEBHOOK|UR
 // Where a Cloudflare Worker or a Node app names its plain config vars.
 const CONFIG_FILES = [".env.example", ".env.sample", ".env.template", ".dev.vars.example", "wrangler.jsonc", "wrangler.json", "wrangler.toml"];
 
+// The probe reads the repo; it cannot see an alert arrive. Every gate 5 PASS says so.
+const UNTESTED = "delivery not tested — send one test error and confirm it arrives";
+const reporterName = (def) => def.text.match(CUSTOM_ERROR_FN_RE)[0].split(/\s+|=/).filter((w) => /Error|Alert|Digest/.test(w))[0];
+
+/** True when the function defined at `def` has nothing between its braces once comments are gone. */
+function hasEmptyBody(repo, def) {
+  const text = repo.code(def.file).slice(def.line - 1, def.line + 39).join("\n");
+  const open = text.match(/\)\s*(:[^{=]+)?(=>\s*)?\{/);
+  if (!open) return false;
+  const start = open.index + open[0].length;
+  for (let i = start, depth = 1; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}" && --depth === 0) return text.slice(start, i).trim() === "";
+  }
+  return false;
+}
+
+/** Whether a hand-rolled reporter is an error path: it has a body, something calls it, and the
+ * alert address named in config is read in a file on that path (one that defines or calls a
+ * reporter). It cannot tell a reporter that sends from one that only logs. `pathFiles` is that
+ * set of files. Returns { pass: note } or { fail: note }. */
+function customPath(repo, def, src, pathFiles) {
+  const fn = reporterName(def);
+  const at = `${fn} at ${loc(def)}`;
+  if (hasEmptyBody(repo, def)) return { fail: `${at} is an empty stub: it records and sends nothing` };
+  const ownDef = new RegExp(`\\bfunction\\s+${fn}\\b|\\bconst\\s+${fn}\\s*=`);
+  const called = repo.grep(new RegExp(`\\b${fn}\\s*\\(`), src).some((h) => !ownDef.test(h.text));
+  if (!called) return { fail: `${at} is never called from source: wire it into the error handler` };
+  for (const file of CONFIG_FILES) {
+    const key = (repo.read(file) ?? "").match(ALERT_KEY_RE)?.[0];
+    if (!key) continue;
+    const read = repo.grep(new RegExp(`\\b${key}\\b`), [...pathFiles])[0];
+    if (!read) return { fail: `${at}, but alert address ${key} (named in ${file}) is not read in a file that defines or calls an error reporter: nothing sends to it` };
+    return { pass: `static: ${at}, alert address ${key} in ${file}, read at ${loc(read)}; ${UNTESTED}` };
+  }
+  return { fail: `${at} but no alert address (ALERT_EMAIL, *_WEBHOOK) in ${CONFIG_FILES.slice(0, 2).join(", ")} or wrangler config: errors are logged, not delivered` };
+}
+
 function gate5(repo) {
-  const init = repo.grep(TRACKER_INIT_RE, repo.sourceFiles())[0];
+  const src = repo.sourceFiles();
+  const init = repo.grep(TRACKER_INIT_RE, src)[0];
   if (init) {
     const example = envExample(repo);
     if (!example || !DSN_KEY_RE.test(repo.read(example) ?? "")) return FAIL(`tracker init at ${loc(init)} but no DSN key in .env.example`);
-    return PASS(`tracker init at ${loc(init)}, DSN named in ${example}`);
+    return PASS(`static: tracker init at ${loc(init)}, DSN named in ${example}; ${UNTESTED}`);
   }
-  const custom = repo.grep(CUSTOM_ERROR_FN_RE, repo.sourceFiles())[0];
-  if (!custom) return FAIL("no error tracker init (Sentry/Rollbar/Bugsnag/Honeybadger) and no recordError/reportError function in source");
-  const fn = custom.text.match(CUSTOM_ERROR_FN_RE)[0].split(/\s+|=/).filter((w) => /Error|Alert|Digest/.test(w))[0];
-  for (const file of CONFIG_FILES) {
-    const key = (repo.read(file) ?? "").match(ALERT_KEY_RE)?.[0];
-    if (key) return PASS(`${fn} at ${loc(custom)}, alert address ${key} in ${file}`);
-  }
-  return FAIL(`${fn} at ${loc(custom)} but no alert address (ALERT_EMAIL, *_WEBHOOK) in ${CONFIG_FILES.slice(0, 2).join(", ")} or wrangler config: errors are logged, not delivered`);
+  const defs = repo.grep(CUSTOM_ERROR_FN_RE, src);
+  if (!defs.length) return FAIL("no error tracker init (Sentry/Rollbar/Bugsnag/Honeybadger) and no recordError/reportError function in source");
+  const names = [...new Set(defs.map(reporterName))];
+  const pathFiles = new Set(repo.grep(new RegExp(`\\b(${names.join("|")})\\b`), src).map((h) => h.file));
+  const outcomes = defs.map((d) => customPath(repo, d, src, pathFiles));
+  const ok = outcomes.find((o) => o.pass);
+  return ok ? PASS(ok.pass) : FAIL(outcomes[0].fail);
 }
 
 const HEALTH_PATH_RE = /(^|\/)(api\/)?healthz?(\.[cm]?[jt]sx?|\/route\.[cm]?[jt]sx?|\/index\.[cm]?[jt]sx?)$/;
@@ -213,7 +251,8 @@ function gate9(repo) {
   const violations = [];
   let calls = 0;
   for (const f of repo.sourceFiles()) {
-    const lines = (repo.read(f) ?? "").split("\n");
+    // Comments blanked: "// TODO add timeout" two lines down is not a guard.
+    const lines = repo.code(f);
     for (let i = 0; i < lines.length; i++) {
       if (!CALL_RE.test(lines[i]) || SAME_ORIGIN_RE.test(lines[i]) || NOT_A_CALL_RE.test(lines[i])) continue;
       calls++;
@@ -229,7 +268,7 @@ function gate9(repo) {
 // ---------- stage 3 ----------
 
 // Files the framework loads by convention; any other file counts only when imported.
-const ENTRY_RE = /(^|\/)(middleware|next\.config|settings|urls|wsgi|asgi|manage|server|app|main|index|route|page|layout|_app|_document)\.[^/]+$|(^|\/)(vercel\.json|netlify\.toml|_headers)$/;
+const ENTRY_RE = /(^|\/)(middleware|proxy|next\.config|settings|urls|wsgi|asgi|manage|server|app|main|index|route|page|layout|_app|_document)\.[^/]+$|(^|\/)(vercel\.json|netlify\.toml|_headers)$/;
 const stemOf = (f) => f.split("/").pop().replace(/\.[^.]+$/, "");
 
 /** A helper is evidence only if the framework loads it or another source file imports it:
@@ -249,7 +288,7 @@ function gate10(repo, ctx) {
   const hits = repo.grep(CSRF_RE, repo.sourceFiles());
   const hit = hits.find((h) => wired(repo, h.file));
   const staticResult = hit
-    ? PASS(`static: origin/CSRF check at ${loc(hit)} (pass --url to test it live)`)
+    ? PASS(`static: origin/CSRF check at ${loc(hit)} (pass --url --csrf-post to test it live)`)
     : FAIL(hits.length ? unwired(hits[0].file) : "no Origin/Referer or CSRF check in source");
   if (live && ![404, 405].includes(live.status)) {
     staticResult.note += `; live: cross-origin POST to the health route → ${live.status}, inconclusive (not a mutation route)`;
@@ -290,9 +329,7 @@ const RETENTION_COMPANION_RE = /\b(interval|older than|days|ttl|retention|delete
 
 function findRetention(repo, files) {
   for (const file of files) {
-    const text = repo.read(file);
-    if (text === null) continue;
-    const lines = text.split("\n").map((l) => (isCommentLine(file, l) ? "" : l));
+    const lines = repo.code(file);
     for (let i = 0; i < lines.length; i++) {
       if (!RETENTION_RE.test(lines[i])) continue;
       const window = lines.slice(i, i + 4).join("\n");
@@ -365,7 +402,8 @@ function gate13(repo, ctx) {
 /** With --url, a live request that failed leaves a static PASS unverified. A static FAIL stays FAIL. */
 const liveOrUnknown = (key, gate) => (repo, ctx) => {
   const r = gate(repo, ctx);
-  if (!ctx.live || ctx.live[key] || r.status !== "PASS") return r;
+  // A check that was never requested (--url without --csrf-post) is not a failed one.
+  if (!ctx.live || !(key in ctx.live) || ctx.live[key] || r.status !== "PASS") return r;
   const err = (ctx.live.errors ?? []).find((e) => e.startsWith(key)) ?? `${key}: no response`;
   return UNKNOWN(`live check failed (${err}); ${r.note.replace(/^static: /, "")}`);
 };

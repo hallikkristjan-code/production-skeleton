@@ -1,13 +1,29 @@
 name: Supabase backup
 
-# Supabase's own point-in-time recovery is a paid add-on and, either way, it
-# lives in the same account as the thing it protects. This is the independent
-# copy: encrypted to a key whose private half never touches CI, kept both as a
-# 90-day artifact and — once a week — as a commit in this private repo.
+# An independent copy of the database. Supabase's own point-in-time recovery is
+# a paid add-on and lives in the same account as the thing it protects. Each
+# dump here is encrypted to a key whose private half never touches CI.
 #
-# Setup (once, see docs/backup.md):
-#   1. gpg keypair on your own machine, public half committed as
-#      .github/backup-public.asc
+# WHAT IS IN THE DUMP: schema `public` — your tables and their rows, indexes,
+# functions and row-level-security policies.
+#
+# WHAT IS NOT:
+#   - schema `auth`: users, password hashes, identities, sessions. Restoring
+#     this dump alone gives you rows whose user ids point at nobody.
+#   - Storage: neither the files in your buckets nor the `storage` schema.
+#   - roles and grants (--no-acl), other schemas, Edge Functions, project
+#     settings and secrets.
+# An app with logins or uploads is NOT fully restored by this dump. Decide how
+# those are covered and write it down in docs/ops/restore-drill.md.
+#
+# WHERE COPIES GO: a workflow artifact, kept 90 days, downloadable by everyone
+# with read access to this repository. That is why the job refuses to run in a
+# public repository. Nothing is committed to the repository unless you opt in
+# (last step).
+#
+# Setup (once):
+#   1. gpg keypair on your own machine; commit the public half as
+#      .github/backup-public.asc. The private half stays off GitHub.
 #   2. repo secret BACKUP_DATABASE_URL = Supabase → Settings → Database →
 #      Connection string → URI (session pooler, with the password)
 
@@ -18,7 +34,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # the weekly dump is committed back
+  contents: read # change to `write` only together with the opt-in last step
 
 concurrency:
   group: backup
@@ -29,13 +45,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Refuse to run in a public repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Artifacts of a public repository can be downloaded by any signed-in
+          # GitHub user. The dump is encrypted, but it is still not for handing out.
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}" --jq .private)" != "true" ]; then
+            echo "::error::This repository is public (or its visibility could not be read). Run the backup from a private repository."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Check the encryption key is present
         run: |
           if [ ! -f .github/backup-public.asc ]; then
-            echo "::error::.github/backup-public.asc is missing — see docs/backup.md. Refusing to dump the database unencrypted."
+            echo "::error::.github/backup-public.asc is missing — see the setup notes at the top of this workflow. Refusing to dump the database unencrypted."
             exit 1
           fi
 
@@ -65,7 +93,7 @@ jobs:
           # pipefail, or a failed pg_dump would be hidden by gpg's clean exit.
           set -euo pipefail
           if [ -z "${DATABASE_URL:-}" ]; then
-            echo "::error::secret BACKUP_DATABASE_URL is not set — see docs/backup.md"
+            echo "::error::secret BACKUP_DATABASE_URL is not set — see the setup notes at the top of this workflow"
             exit 1
           fi
           TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M')
@@ -74,7 +102,8 @@ jobs:
           # --no-owner/--no-acl so the dump restores under a different role.
           # --schema=public only: a fresh Supabase project already owns auth,
           # storage and realtime, and a dump carrying those does not restore
-          # cleanly. All app data lives in public.
+          # cleanly into one. The price: users and files are not in this dump
+          # (see the list at the top).
           # The runner has pg_dump 16 earlier in PATH; call 17 explicitly.
           /usr/lib/postgresql/17/bin/pg_dump --no-owner --no-acl --schema=public --format=plain "$DATABASE_URL" \
             | gpg --encrypt --armor --trust-model always --recipient "$RECIPIENT" \
@@ -88,12 +117,11 @@ jobs:
           ls -lh "$OUTFILE"
           echo "OUTFILE=$OUTFILE" >> "$GITHUB_ENV"
           echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_ENV"
-          # Only Mondays and manual runs are kept forever: a daily commit of
-          # personal data would grow the repo history without adding safety.
+          # Used by the opt-in step only: Mondays and manual runs.
           if [ "$(date -u +%u)" = "1" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "COMMIT_TO_REPO=true" >> "$GITHUB_ENV"
+            echo "WEEKLY=true" >> "$GITHUB_ENV"
           else
-            echo "COMMIT_TO_REPO=false" >> "$GITHUB_ENV"
+            echo "WEEKLY=false" >> "$GITHUB_ENV"
           fi
 
       - name: Upload artifact (90 days)
@@ -103,8 +131,16 @@ jobs:
           path: ${{ env.OUTFILE }}
           retention-days: 90
 
-      - name: Commit the weekly dump
-        if: env.COMMIT_TO_REPO == 'true'
+      # OPT-IN, off by default. A dump committed here stays in git history for
+      # good, in every clone and fork, long after the 90-day artifact is gone.
+      # That is the point (a copy that outlives the artifact) and the cost (it
+      # cannot be taken back). To turn it on, do both:
+      #   1. set the repository variable BACKUP_COMMIT_TO_REPO to `true`
+      #   2. change `contents: read` to `contents: write` at the top
+      # Only Monday and manual runs are committed: a daily commit of personal
+      # data would grow the history without adding safety.
+      - name: Commit the weekly dump to this repository (opt-in)
+        if: vars.BACKUP_COMMIT_TO_REPO == 'true' && env.WEEKLY == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

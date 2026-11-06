@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { runProbe } from "./lib/run.mjs";
 import { loadRepo } from "./lib/repo.mjs";
 import { parseArgs } from "./lib/cli.mjs";
-import { declaredDeps } from "./lib/stage.mjs";
+import { declaredDeps, packageJson } from "./lib/stage.mjs";
 import { parseHumanGates } from "./lib/humanGates.mjs";
 
 const ADAPTERS_DIR = fileURLToPath(new URL("../adapters/", import.meta.url));
@@ -24,6 +24,41 @@ function loadAdapters() {
     .map((d) => ({ dir: join(ADAPTERS_DIR, d.name), ...JSON.parse(readFileSync(join(ADAPTERS_DIR, d.name, "manifest.json"), "utf8")) }));
 }
 
+/** Where the target keeps its code. Next.js serves the App Router from app/ or src/app/, never
+ * both, so a route written into the other root is dead (or shadows the real one). `app` is null
+ * when a route template has no safe place to go; `why` then says what to do by hand. */
+function layoutOf(repo) {
+  const has = (dir) => repo.files.some((f) => f.startsWith(`${dir}/`));
+  const rootApp = has("app");
+  const rootPages = has("pages");
+  const srcApp = has("src/app");
+  // Next.js ignores src/app and src/pages as soon as app/ or pages/ exists in the root.
+  if (srcApp && (rootApp || rootPages)) {
+    return { src: "", app: null, privacyPage: "a privacy page", why: `src/app/ sits next to a root ${rootApp ? "app" : "pages"}/ directory and Next.js ignores src/ in that case: keep one root, then re-run fix` };
+  }
+  if (!rootApp && !srcApp && (rootPages || has("src/pages"))) {
+    const src = rootPages ? "" : "src/";
+    return { src, app: null, privacyPage: `${src}pages/privacy.tsx`, why: "Pages Router project (no app/ directory): the template is an App Router route, add the route by hand" };
+  }
+  const src = srcApp ? "src/" : "";
+  return { src, app: `${src}app`, privacyPage: `${src}app/privacy/page.tsx` };
+}
+
+/** What a manifest entry's `requires` still lacks in the target: dependencies, a minimum major
+ * version, package.json scripts, files. A template that cannot work there is not written. */
+function unmet(requires = {}, { deps, versions, scripts, repo }) {
+  return [
+    ...(requires.deps ?? []).filter((d) => !deps.has(d)).map((d) => `dependency ${d}`),
+    ...Object.entries(requires.minMajor ?? {}).flatMap(([dep, major]) => {
+      // "^14.2.5" → 14. A range with no number ("latest") cannot be judged and is let through.
+      const found = Number(versions[dep]?.match(/\d+/)?.[0]);
+      return found < major ? [`${dep} ${major} or newer (found ${versions[dep]})`] : [];
+    }),
+    ...(requires.scripts ?? []).filter((s) => !scripts[s]).map((s) => `package.json script "${s}"`),
+    ...(requires.files ?? []).filter((p) => !repo.exists(p)),
+  ];
+}
+
 export async function planFix(root, { today } = {}) {
   const repo = loadRepo(root);
   const deps = declaredDeps(repo);
@@ -32,15 +67,21 @@ export async function planFix(root, { today } = {}) {
   // File planning only needs which gates lack files; the network audit adds nothing here.
   const probe = await runProbe(root, { today, audit: false });
   const status = Object.fromEntries(probe.results.map((r) => [r.id, r.status]));
+  const layout = layoutOf(repo);
+  const pkg = packageJson(repo);
+  const target = { deps, versions: { ...pkg.devDependencies, ...pkg.dependencies }, scripts: pkg.scripts ?? {}, repo };
+  // {app} is only ever shown when layout.app exists: a route entry without it becomes `manual` below.
+  const fill = (s) => s?.replace(/\{(src|app|privacyPage)\}/g, (_, key) => layout[key] ?? "app");
   const actions = [];
   for (const f of adapter.files) {
-    const base = { gate: f.gate, dest: f.dest, humanGate: f.humanGate, note: f.note };
+    const base = { gate: f.gate, dest: fill(f.dest), humanGate: f.humanGate, note: fill(f.note) };
     if (status[f.gate] === "PASS") { actions.push({ ...base, action: "skip-pass" }); continue; }
     if (status[f.gate] === "N/A") { actions.push({ ...base, action: "skip-na" }); continue; }
-    if (!f.src) { actions.push({ ...base, action: "manual" }); continue; }
-    const missing = (f.requires?.deps ?? []).filter((d) => !deps.has(d));
+    const missing = unmet(f.requires, target);
     if (missing.length) { actions.push({ ...base, action: "skip-requires", requires: `needs ${missing.join(", ")}` }); continue; }
-    if (repo.exists(f.dest)) { actions.push({ ...base, action: "skip-exists" }); continue; }
+    if (!f.src) { actions.push({ ...base, action: "manual" }); continue; }
+    if (f.dest.includes("{app}") && !layout.app) { actions.push({ ...base, dest: null, action: "manual", note: layout.why }); continue; }
+    if (repo.exists(base.dest)) { actions.push({ ...base, action: "skip-exists" }); continue; }
     actions.push({ ...base, action: "write", src: join(adapter.dir, f.src) });
   }
   // A file this run writes may read env vars the target has never declared;

@@ -22,7 +22,8 @@ Evidence paths · What the probe does not do · After the scorecard
 | Say | Runs | Changes files? |
 |---|---|---|
 | `/skeleton` | `node <skill>/scripts/probe.mjs .` | No |
-| `/skeleton --url https://app.example` | probe + 3 live requests (health, headers, cross-origin POST) | No |
+| `/skeleton --url https://app.example` | probe + 2 live checks (health, headers), GET requests only | No |
+| `/skeleton --url https://app.example --csrf-post` | the same + 1 cross-origin POST to `/api/health` | No files; it sends a write request to that server |
 | `/skeleton --no-audit` | probe without the `npm audit` call (offline, or a slow registry) | No |
 | `/skeleton fix` | `node <skill>/scripts/fix.mjs .` — plan only | No |
 | `/skeleton fix --write` | generates missing files, appends human gates | Yes, never overwrites |
@@ -32,7 +33,11 @@ paraphrase the statuses.
 
 Gate 2 runs `npm audit --json` against `package-lock.json` when one exists, or `pip-audit` for a Python project (`requirements.txt`, or `uv.lock` exported with `uv export` to a temp file) (network, ~3 s); any high or critical finding turns the gate FAIL with the count. A missing lockfile or an offline registry is noted, not failed.
 
-What --url sends: `GET /api/health` (falling back to `GET /health`), `GET /` (following redirects, headers only), and `POST /api/health` with a foreign `Origin` header and an empty JSON body. A 403 on the POST is the only result that upgrades gate 10; any other answer keeps the static result.
+What --url sends: `GET /api/health` (falling back to `GET /health`) and `GET /` (following redirects, headers only). Nothing else. `--csrf-post` adds `POST /api/health` with a foreign `Origin` header and an empty JSON body; a 403 on it is the only result that upgrades gate 10, any other answer keeps the static result. The POST is a write request and the probe cannot know what it does on a server, so never add `--csrf-post` on your own: use it only when the user asks for the live CSRF check on an app they own. "Read-only" describes the repo, not what a remote server does with a request.
+
+`fix` writes only what can work in the project it finds, and says why it skipped the rest (`skip-requires`, `manual`). The one adapter is Next.js (15 or newer for the health route) + Supabase + Vercel: routes go under `src/app` when the app lives there; a Pages Router project, or one where `src/app/` sits next to a root `app/` or `pages/` (Next.js ignores `src/` then), gets a manual step instead of a route file; the CI workflow is an npm + TypeScript template that needs `package-lock.json`, `typescript` and both a `test` and a `build` script (with pnpm, yarn or bun the user writes it by hand); the `.ts` helpers need `typescript`. Read the plan's Action column to the user instead of promising that everything was generated.
+
+The backup workflow it generates dumps the Postgres schema `public` only (no auth users, no Storage files), keeps each encrypted dump as a 90-day artifact, refuses to run in a public repository, and commits nothing to the repo unless the owner opts in. The restore drill ships without a date: gate 7 stays FAIL until a human has restored into a throwaway database. Never write a drill date for a restore that did not happen.
 
 ## Session start (gate 4)
 
@@ -44,11 +49,17 @@ the gate STALE; say so.
 ## Statuses
 
 - **PASS** — evidence found. Notes marked `static:` were checked in the repo only; pass `--url` to check them live.
-  PASS means the probe found the pattern, not that it works end to end. Whole-line comments are
-  never evidence, and a gate 10/11 helper counts only when the framework loads it (middleware,
+  PASS means the probe found the pattern, not that it works end to end. Comments are never
+  evidence — whole-line, trailing or block: `# npm test` is not a CI step, `// TODO timeout` is
+  not a timeout. A gate 10/11 helper counts only when the framework loads it (middleware, proxy,
   next.config, settings.py, …) or another source file imports it — after `fix --write`, wire the
   helpers in before those gates turn green. Gates 7, 9 and 12 are heuristics (a backup job name,
   a timeout near a call, a cleanup job); the live checks and the audit skill are the stronger proof.
+  Gate 5 is always `static:`: a tracker init with its DSN key, or a hand-rolled reporter that has a
+  body, is called, and whose alert address is named in config and read in a file that defines or
+  calls a reporter. An empty `recordError() {}` plus a key name does not pass. The probe cannot
+  tell a reporter that sends from one that only logs, and it cannot see an alert arrive, so never
+  say "errors reach a human" as a tested fact: say the path is wired and delivery is untested.
 - **FAIL** — evidence missing. The note says what was looked for and where.
 - **STALE** — evidence exists but is too old (restore drill > `drill_max_days`, human gate past due).
 - **UNKNOWN** — the probe tried to verify and could not: gate 2's audit did not run (offline, tool
@@ -116,3 +127,7 @@ other tools' jobs. Security depth: run `/cso` or a proper pentest.
 End with **I can do this now:** — 1–3 numbered lines, only actions the agent
 can take in this environment (write a file, run `fix --write`, add a test),
 ordered by risk, not ease. Do not run them; wait for a number.
+
+When gate 5 passes and `HUMAN-GATES.md` has no line about it, offer to add one:
+"Throw one test error in production and confirm the alert reaches you". Do not
+send test alerts yourself.
