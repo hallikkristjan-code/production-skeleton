@@ -78,7 +78,10 @@ export function loadRepo(root) {
         // A root logs/ holds run output (audit evidence, fixtures). Only the root one:
         // app/logs/route.ts is a route.
         const runLogs = entry.name === "logs" && dir === root;
-        if (!IGNORE_DIRS.has(entry.name) && !worktrees && !runLogs) walk(abs);
+        // .agents/skills, .claude/skills, .cursor/skills: `npx skills add` installs into the
+        // project, and an installed skill's code is not the app's. This probe would read itself.
+        const agentSkills = entry.name === "skills" && /^\.[^\\/]+$/.test(relative(root, dir));
+        if (!IGNORE_DIRS.has(entry.name) && !worktrees && !runLogs && !agentSkills) walk(abs);
       } else if (entry.isFile()) {
         files.push(relative(root, abs).replaceAll("\\", "/"));
       }
@@ -87,8 +90,17 @@ export function loadRepo(root) {
   walk(root);
   files.sort();
 
+  const contents = new Map();
   const read = (rel) => {
-    try { return readFileSync(join(root, rel), "utf8"); } catch { return null; }
+    if (!contents.has(rel)) {
+      try { contents.set(rel, readFileSync(join(root, rel), "utf8")); } catch { contents.set(rel, null); }
+    }
+    return contents.get(rel);
+  };
+  const stripped = new Map();
+  const strippedLines = (rel, text) => {
+    if (!stripped.has(rel)) stripped.set(rel, codeLines(rel, text));
+    return stripped.get(rel);
   };
   const exists = (rel) => existsSync(join(root, rel));
   const isTestPath = (rel) => TEST_PATH_RE.test(rel) || TEST_FILE_RE.test(rel) ||
@@ -108,7 +120,7 @@ export function loadRepo(root) {
       const text = read(file);
       if (text === null) continue;
       const lines = text.split("\n");
-      const code = codeLines(file, text);
+      const code = strippedLines(file, text);
       for (let i = 0; i < lines.length; i++) {
         if (re.test(code[i])) hits.push({ file, line: i + 1, text: lines[i].trim() });
       }
@@ -133,8 +145,13 @@ export function loadRepo(root) {
     } catch { return null; }
   };
 
-  /** read() with comments blanked — what a gate may treat as evidence. */
-  const code = (rel) => codeLines(rel, read(rel) ?? "");
+  // True when .gitignore hides rel from everyone who clones the repo. False outside a git repo.
+  const isIgnored = (rel) => {
+    try { git(root, ["check-ignore", "-q", "--", rel]); return true; } catch { return false; }
+  };
 
-  return { root, files, read, code, exists, grep, isTestPath, sourceFiles, notScanned, tracked, firstCommitDate };
+  /** read() with comments blanked — what a gate may treat as evidence. */
+  const code = (rel) => strippedLines(rel, read(rel) ?? "");
+
+  return { root, files, read, code, exists, grep, isTestPath, sourceFiles, notScanned, tracked, isIgnored, firstCommitDate };
 }

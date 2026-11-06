@@ -5,7 +5,7 @@
     { "gate": 1, "src": "templates/ci.yml", "dest": ".github/workflows/ci.yml", "requires": { "deps": ["typescript"], "scripts": ["test", "build"], "files": ["package-lock.json"] }, "note": "npm + TypeScript template (npm ci, tsc, npm test, npm run build): commit package-lock.json and define both scripts first; with pnpm, yarn or bun write the workflow by hand" },
     { "gate": 2, "src": "templates/dependabot.yml", "dest": ".github/dependabot.yml" },
     { "gate": 2, "src": "templates/osv-scanner.yml", "dest": ".github/workflows/osv-scanner.yml" },
-    { "gate": 3, "src": "templates/env.example", "dest": ".env.example", "note": "add every variable your code reads; the probe lists the missing ones" },
+    { "gate": 3, "src": "templates/env.example", "dest": ".env.example", "note": "add every variable your code reads; the probe lists the missing ones. create-next-app's .gitignore hides this file (.env*): add the line !.env.example" },
     { "gate": 4, "src": "templates/HUMAN-GATES.md", "dest": "HUMAN-GATES.md" },
     { "gate": 5, "src": null, "dest": null, "humanGate": "Install an error tracker (e.g. `npx @sentry/wizard@latest -i nextjs`) and add its DSN to the hosting env" },
     { "gate": 5, "src": null, "dest": null, "humanGate": "Throw one test error in production and confirm the alert reaches you (the probe cannot see delivery)" },

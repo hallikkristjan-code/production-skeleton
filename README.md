@@ -120,7 +120,10 @@ file. The CI workflow is an npm + TypeScript
 template, written only when `package-lock.json`, `typescript` and both a
 `test` and a `build` script are there. Otherwise the plan names what is
 missing (`skip-requires`), and with pnpm, yarn or bun you write the workflow
-yourself. The TypeScript helpers are skipped the same way in a project
+yourself. A fresh create-next-app has no `test` script, so it stops at 3 of 4
+required gates until you add one: CI with no tests in it would be a green light
+that means nothing. Its `.gitignore` also hides `.env.example` (`.env*`): add the
+line `!.env.example`, and gate 3 tells you so. The TypeScript helpers are skipped the same way in a project
 without `typescript`, and the health route in a project older than
 Next.js 15.
 

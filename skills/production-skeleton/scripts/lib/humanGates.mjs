@@ -36,7 +36,8 @@ export function parseHumanGates(text) {
     let text = m[3].trim();
     let due = null;
     const d = text.match(DUE_RE);
-    if (d) { due = d[1]; text = text.slice(0, d.index).trim(); }
+    // "(due: 2027-01-24, earlier if convenient)": the date is the date, the rest is a remark.
+    if (d) { due = d[1].match(/^\d{4}-\d{2}-\d{2}\b/)?.[0] ?? d[1]; text = text.slice(0, d.index).trim(); }
     lines.push({ done: m[1] !== " ", created: m[2], due, text });
   }
   return { config, lines };

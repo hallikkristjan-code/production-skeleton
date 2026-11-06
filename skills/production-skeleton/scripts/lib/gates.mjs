@@ -139,6 +139,7 @@ function gate3(repo) {
   if (reads.size === 0) return PASS("no environment variables read in source");
   const example = envExample(repo);
   if (!example) return FAIL(`${reads.size} env vars read but no .env.example (first: ${[...reads.keys()].slice(0, 3).join(", ")})`);
+  if (repo.isIgnored(example)) return FAIL(`${example} is ignored by .gitignore, so nobody who clones the repo gets it: add the line !${example} (create-next-app writes .env*)`);
   const declared = new Set((repo.read(example) ?? "").split("\n").map((l) => l.replace(/^#\s*/, "").match(/^([A-Z][A-Z0-9_]*)=/)?.[1]).filter(Boolean));
   const missing = [...reads].filter(([name]) => !declared.has(name));
   if (missing.length) return FAIL(`missing from ${example}: ` + missing.slice(0, 5).map(([n, at]) => `${n} (${at})`).join(", "));
@@ -247,7 +248,11 @@ function gate6(repo, ctx) {
 }
 
 const BACKUP_RE = /\b(pg_dump|mysqldump|mongodump|sqlite3 .* \.backup|litestream|backup)\b/i;
-const DATE_RE = /^\s*(?:Date|Last drill|Last run|Completed):\s*(\d{4}-\d{2}-\d{2})\b/im;
+// The drill date sits under a label: "Date: 2026-09-01", "Viimane proov: 2026-09-01". A date in a
+// file name or a sentence has no label, and a label that names a plan is not a drill that happened.
+const DRILL_DATE_RE = /^[\s>*_-]*([^\n:]{1,60}):[\s*_]*(\d{4}-\d{2}-\d{2})\b/gm;
+const PLANNED_RE = /next|plan|due|schedul|upcoming|target|järgmine|tähtaeg/i;
+const lastDrillDate = (text) => [...text.matchAll(DRILL_DATE_RE)].find((m) => !PLANNED_RE.test(m[1]))?.[2];
 
 function gate7(repo, ctx) {
   const candidates = repo.files.filter((f) => /^\.github\/workflows\/|^scripts\/|^supabase\/|^\.gitlab-ci\.yml$/.test(f));
@@ -255,8 +260,8 @@ function gate7(repo, ctx) {
   if (!job) return FAIL("no backup job (workflow or script mentioning pg_dump/mysqldump/mongodump/backup)");
   const drill = repo.read("docs/ops/restore-drill.md");
   if (drill === null) return FAIL(`backup job at ${loc(job)} but no docs/ops/restore-drill.md`);
-  const date = drill.match(DATE_RE)?.[1];
-  if (!date) return FAIL("docs/ops/restore-drill.md has no YYYY-MM-DD date");
+  const date = lastDrillDate(drill);
+  if (!date) return FAIL("docs/ops/restore-drill.md has no dated drill: after running one, write it on a line of its own (Date: YYYY-MM-DD)");
   const max = ctx.config.drill_max_days ?? DEFAULTS.drill_max_days;
   if (!isDate(date)) return FAIL(`invalid restore drill date: ${date}`);
   const age = daysBetween(date, ctx.today);
@@ -309,12 +314,20 @@ const stemOf = (f) => f.split("/").pop().replace(/\.[^.]+$/, "");
 
 /** A helper is evidence only if the framework loads it or another source file imports it:
  * `fix --write` drops lib/server/csrf.ts in place, and until middleware imports it nothing is protected. */
-function wired(repo, file, seen = new Set()) {
-  if (seen.has(file)) return false;
-  seen = new Set([...seen, file]);
-  if (ENTRY_RE.test(file)) return true;
-  const importRe = new RegExp(`\\b(import|require|from)\\b.*["'./\\s]${stemOf(file)}\\b`);
-  return repo.grep(importRe, repo.sourceFiles().filter((f) => f !== file)).some((h) => wired(repo, h.file, seen));
+const deadFiles = new WeakMap(); // repo → files known to be unreachable: gate 11 asks about every file.
+
+function wired(repo, file) {
+  if (!deadFiles.has(repo)) deadFiles.set(repo, new Set());
+  const dead = deadFiles.get(repo);
+  const seen = new Set([file]);
+  for (const f of seen) {
+    if (ENTRY_RE.test(f)) return true;
+    if (dead.has(f)) continue;
+    const importRe = new RegExp(`\\b(import|require|from)\\b.*["'./\\s]${stemOf(f)}\\b`);
+    for (const h of repo.grep(importRe, repo.sourceFiles())) if (h.file !== f) seen.add(h.file);
+  }
+  for (const f of seen) dead.add(f); // closed under importers: none of them reaches an entry file
+  return false;
 }
 const unwired = (file) => `${file} has the check but is not reachable from a recognized entry point — wire it up`;
 

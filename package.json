@@ -1,6 +1,6 @@
 {
   "name": "production-skeleton",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Day-0 production skeleton: 13 gates, read-only probe, human-gates register. Plus skeptic-review, the evidence-based audit that proves the floor holds.",
   "license": "MIT",

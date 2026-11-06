@@ -98,6 +98,15 @@ export function detectStage(repo) {
 
 export const MANIFEST_RE = /(^|\/)(package\.json|requirements[^/]*\.txt|pyproject\.toml|Pipfile|uv\.lock|go\.mod|Cargo\.toml|Gemfile|composer\.json|pom\.xml|build\.gradle(\.kts)?)$/;
 
+/** declaredDeps reads [project] and Poetry tables. Dependencies declared any other way (PDM, Flit,
+ * `dynamic = ["dependencies"]`) are out of its reach. */
+function pyprojectIsRead(text) {
+  if (/^\[tool\.poetry(\.group\.[^.\]]+)?\.dependencies\]/m.test(text)) return true;
+  return /^\[project\]/m.test(text) && !/^(dynamic\s*=[^\n]*dependencies|["']dependencies["'])/m.test(text);
+}
+
 export function unreadManifests(repo) {
-  return repo.files.filter((f) => MANIFEST_RE.test(f) && !repo.isTestPath(f) && !/(^|\/)(package\.json|requirements[^/]*\.txt|uv\.lock)$/.test(f));
+  return repo.files.filter((f) => MANIFEST_RE.test(f) && !repo.isTestPath(f)
+    && !/(^|\/)(package\.json|requirements[^/]*\.txt|uv\.lock)$/.test(f)
+    && !(f.endsWith("pyproject.toml") && pyprojectIsRead(repo.read(f) ?? "")));
 }

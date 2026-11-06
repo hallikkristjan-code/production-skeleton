@@ -7,7 +7,7 @@
  * Dry-run by default: prints the plan. --write creates files that do not exist
  * and appends human-gate lines. Never overwrites.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, appendFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runProbe } from "./lib/run.mjs";
@@ -92,7 +92,7 @@ export async function planFix(root, { today } = {}) {
   const writesEnvReader = actions.some((a) => a.action === "write" && ENV_READ.test(readFileSync(a.src, "utf8")));
   if (envAction && envAction.action === "skip-pass" && writesEnvReader && !repo.exists(".env.example")) {
     const entry = adapter.files.find((f) => f.dest === ".env.example");
-    Object.assign(envAction, { action: "write", src: join(adapter.dir, entry.src), note: "planned files read env vars; declare them here" });
+    Object.assign(envAction, { action: "write", src: join(adapter.dir, entry.src), note: `planned files read env vars; declare them here. ${envAction.note}` });
   }
   return { adapter: adapter.name, actions, stage: probe.stage };
 }
@@ -136,7 +136,8 @@ function renderPlan(plan, write) {
   return lines.join("\n") + "\n";
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// import.meta.url is the real path, argv[1] the one typed: .claude/skills is a link to .agents/skills.
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
   const USAGE = "usage: fix.mjs [path] [--write] [--today YYYY-MM-DD]";
   const args = parseArgs(process.argv.slice(2), { write: "boolean", today: "string" });
   if (args.error) {

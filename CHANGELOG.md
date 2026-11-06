@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.1 — 2026-11-07
+
+Found by following the README in a clean session on a fresh create-next-app
+project, and by running the probe on 34 local repositories.
+
+- A skill installed in the project (`.agents/skills`, `.claude/skills`, any
+  dot directory's `skills/`) is no longer read as the app's code. In 0.2.0 it
+  gave false passes on gates 6, 9 and 12, and `fix` then skipped the health route.
+- `fix.mjs` started through a link, such as `.claude/skills`, ran nothing and
+  exited 0. It now runs.
+- Gate 3 fails when `.gitignore` hides `.env.example`, as create-next-app's
+  `.env*` does, and `fix` names the line to add.
+- Gate 7 reads a dated line under any label, in any language. 0.2.0 knew four
+  English labels and called a rehearsed drill undated.
+- Gate 4 accepts a real due date followed by a remark.
+- A `pyproject.toml` with `[project]` or Poetry dependencies is no longer
+  reported as unread.
+- Following imports visits each file once and a file is read once. 0.2.0 took
+  40 s on a repository the probe now reads in 0.3 s.
+
 ## 0.2.0 — 2026-11-06
 
 A reliability round before wider distribution. No new gates, no new adapters.
