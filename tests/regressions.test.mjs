@@ -56,10 +56,10 @@ test("comments are not evidence, but real code next to them still is", () => {
 test("gate 10/11: a helper no source file imports is not wired up → FAIL with a pointer", () => {
   const csrf = run(10, { "lib/server/csrf.ts": "export function isTrustedOrigin(req) { return req.headers.get('origin') === APP; }" });
   assert.equal(csrf.status, "FAIL");
-  assert.match(csrf.note, /lib\/server\/csrf\.ts.*not imported/);
+  assert.match(csrf.note, /lib\/server\/csrf\.ts.*not reachable/);
   const headers = run(11, { "lib/server/securityHeaders.ts": "Strict-Transport-Security\nframe-ancestors\nnosniff" });
   assert.equal(headers.status, "FAIL");
-  assert.match(headers.note, /not imported/);
+  assert.match(headers.note, /not reachable/);
 });
 
 test("gate 10/11: the same helper imported from middleware / next.config passes", () => {

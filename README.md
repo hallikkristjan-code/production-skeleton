@@ -104,7 +104,7 @@ Without an agent, from a clone of this repo: `npm run probe -- <path>` (or
 installing).
 Add `--json` for machines, `--url https://your.app` for two live checks
 (health, headers) that send GET requests only. `--csrf-post` adds one cross-origin POST to `/api/health`
-that must get a 403. It is a write request and the probe cannot know what a
+as a diagnostic only; even a 403 is inconclusive for mutation-route protection. It is a write request and the probe cannot know what a
 POST does on a server, so it is off by default: use it on an app you own.
 
 `/skeleton fix` prints what it would generate. `/skeleton fix --write`
@@ -149,7 +149,7 @@ a library, where gates 5–13 are N/A).
 | 7 | Independent backup with a rehearsed restore | 2 | a backup job and `docs/ops/restore-drill.md` dated within `drill_max_days` |
 | 8 | Rollback runbook: code, schema, data | 2 | `docs/ops/rollback.md` mentions all three |
 | 9 | External calls time out | 2 | every `fetch`/axios/requests/httpx call has a `signal` or `timeout` nearby; `fetch('/api/…')` is same-origin and not counted |
-| 10 | Cross-origin writes are refused | 3 | an Origin/CSRF check in source (live, with `--csrf-post`: foreign-Origin POST → 403) |
+| 10 | Cross-origin writes are refused | 3 | an Origin/CSRF check in source (live, with `--csrf-post`: inconclusive health-route diagnostic) |
 | 11 | HSTS, frame-ancestors, nosniff | 3 | all three configured (live: present in response headers) |
 | 12 | Input size limits and log retention | 3 | a max-length validator and a cleanup job with a retention period |
 | 13 | Privacy page matches the code | 3 | a page named `privacy` (or its equivalent in eight other languages, or `gdpr`, or the file named by `privacy:` in HUMAN-GATES.md), linked as a route from source |
@@ -271,3 +271,22 @@ Zero dependencies. Node 20+. `npm test` runs the suite; CI runs it on Node 20,
 ## License
 
 MIT.
+
+### Probe coverage and safety
+
+Python audits accept only exact pinned requirements and always use `--no-deps --disable-pip`.
+Ranges, paths, editable packages, URLs and includes are UNKNOWN without resolution or builds.
+A pinned list covers only the packages it contains; supply a complete resolved export.
+JSON `coverage.audit` lists checked and skipped manifests/packages; a finding fails gate 2 even
+if another ecosystem was skipped. Nested manifests remain unverified: select the application
+directory to audit and generate files. Stage detection considers nested declarations conservatively;
+the adapter uses only the root application.
+
+TOML extraction recognizes common project arrays and Poetry tables, not the whole language;
+`coverage.manifestsNotRead` includes pyproject.toml as partially read. `coverage.notScanned` counts
+unsupported source types including Vue/Svelte/Astro. Absence of findings in that coverage is not PASS.
+Generated registers leave stage automatic; explicit lower overrides remain with a visible warning.
+Restore evidence requires a completed Date/Last drill/Last run/Completed field with a real,
+non-future calendar date. Live health requires JSON with a meaningful version/sha/commit/git_sha.
+Live HSTS requires HTTPS and positive max-age; framing and nosniff values are checked.
+Static CI, import wiring and security configuration checks are heuristics, not execution proof.

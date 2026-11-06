@@ -44,7 +44,7 @@ test("gate 7: backup job + dated restore drill", () => {
   assert.equal(run(7, { "docs/ops/restore-drill.md": "2026-09-01" }).status, "FAIL");
 });
 test("gate 7: drill_max_days from config", () => {
-  const r = run(7, { ...BACKUP, "docs/ops/restore-drill.md": "2026-06-01" }, { ...base, config: { drill_max_days: 30 } });
+  const r = run(7, { ...BACKUP, "docs/ops/restore-drill.md": "Date: 2026-06-01" }, { ...base, config: { drill_max_days: 30 } });
   assert.equal(r.status, "STALE");
 });
 

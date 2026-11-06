@@ -1,8 +1,7 @@
-const TODAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+import { isDate } from "./humanGates.mjs";
 
-export function isValidToday(v) {
-  return TODAY_RE.test(v) && !Number.isNaN(Date.parse(v));
-}
+/** A real calendar day: 2026-02-31 is refused, not rolled over into March. */
+export const isValidToday = isDate;
 
 /**
  * Parse argv into { path, error, ...flags }. `spec` maps a flag's name (without

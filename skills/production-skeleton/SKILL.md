@@ -31,9 +31,9 @@ Evidence paths · What the probe does not do · After the scorecard
 `<skill>` is this skill's directory. Show the scorecard verbatim; do not
 paraphrase the statuses.
 
-Gate 2 runs `npm audit --json` against `package-lock.json` when one exists, or `pip-audit` for a Python project (`requirements.txt`, or `uv.lock` exported with `uv export` to a temp file) (network, ~3 s); any high or critical finding turns the gate FAIL with the count. A missing lockfile or an offline registry is noted, not failed.
+Gate 2 runs `npm audit --json` against `package-lock.json` when one exists, or `pip-audit` for a Python project (`requirements.txt`, or `uv.lock` exported with `uv export` to a temp file) (network, ~3 s); any high or critical finding turns the gate FAIL with the count. A missing lockfile, unsupported input, skipped package or offline registry is UNKNOWN and not verified. Python input must be exact pinned requirements; --no-deps --disable-pip prevents resolving or building it. Supply a complete resolved export for transitive dependencies.
 
-What --url sends: `GET /api/health` (falling back to `GET /health`) and `GET /` (following redirects, headers only). Nothing else. `--csrf-post` adds `POST /api/health` with a foreign `Origin` header and an empty JSON body; a 403 on it is the only result that upgrades gate 10, any other answer keeps the static result. The POST is a write request and the probe cannot know what it does on a server, so never add `--csrf-post` on your own: use it only when the user asks for the live CSRF check on an app they own. "Read-only" describes the repo, not what a remote server does with a request.
+What --url sends: `GET /api/health` (falling back to `GET /health`) and `GET /` (following redirects, headers only). Nothing else. `--csrf-post` adds `POST /api/health` with a foreign `Origin` header and an empty JSON body; the response is diagnostic only and gate 10 remains UNKNOWN because health cannot prove mutation-route protection. The POST is a write request and the probe cannot know what it does on a server, so never add `--csrf-post` on your own: use it only when the user asks for the live CSRF check on an app they own. "Read-only" describes the repo, not what a remote server does with a request.
 
 `fix` writes only what can work in the project it finds, and says why it skipped the rest (`skip-requires`, `manual`). The one adapter is Next.js (15 or newer for the health route) + Supabase + Vercel: routes go under `src/app` when the app lives there; a Pages Router project, or one where `src/app/` sits next to a root `app/` or `pages/` (Next.js ignores `src/` then), gets a manual step instead of a route file; the CI workflow is an npm + TypeScript template that needs `package-lock.json`, `typescript` and both a `test` and a `build` script (with pnpm, yarn or bun the user writes it by hand); the `.ts` helpers need `typescript`. Read the plan's Action column to the user instead of promising that everything was generated.
 
@@ -131,3 +131,13 @@ ordered by risk, not ease. Do not run them; wait for a number.
 When gate 5 passes and `HUMAN-GATES.md` has no line about it, offer to add one:
 "Throw one test error in production and confirm the alert reaches you". Do not
 send test alerts yourself.
+
+## Coverage limits
+
+Read JSON coverage before interpreting a score: `audit` lists manifest results,
+`manifestsNotRead` includes unsupported manifests and partially parsed TOML, and `notScanned`
+counts unsupported extensions, including Vue/Svelte/Astro. Probe nested applications in their
+own directory. Do not call uncovered projects clean or ready.
+Generated registers leave stage automatic; deliberate lower overrides remain with a warning.
+Record only completed restore drills in a Date/Last drill/Last run/Completed field.
+Static import chains and CI checks are heuristics; verify execution separately.

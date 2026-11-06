@@ -7,7 +7,7 @@ for a drill that did not happen.
 
 ## Last drill
 
-Date: (YYYY-MM-DD — the probe reads the first date in this file)
+Date: (YYYY-MM-DD — the probe reads this Date field; enter only the last completed drill)
 Dump: (which artifact)
 Target: (a throwaway project or a local Postgres — never production)
 Result: (tables, rows, minutes)

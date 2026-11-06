@@ -403,7 +403,7 @@ test("gate 10: --url without the POST keeps the static result (not UNKNOWN, not 
   const r = run(10, { "middleware.ts": "const o = req.headers.get('origin');" }, { ...base, live });
   assert.equal(r.status, "PASS");
   assert.match(r.note, /^static: /);
-  assert.match(r.note, /--csrf-post/);
+  assert.match(r.note, /protection not verified/);
 });
 
 test("probe.mjs: --csrf-post without --url is a usage error", () => {

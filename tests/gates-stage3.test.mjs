@@ -12,16 +12,16 @@ test("13 gates, ids 1..13, stages 1-4 / 2-9 / 3-13", () => {
   assert.deepEqual(GATES.map((g) => g.stage), [1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3]);
 });
 
-test("gate 10: origin/CSRF check in source; live 403 required", () => {
+test("gate 10: origin/CSRF check in source; health POST is inconclusive", () => {
   assert.equal(run(10, { "middleware.ts": 'const origin = req.headers.get("origin");' }).status, "PASS");
   assert.equal(run(10, { "settings.py": "CSRF_TRUSTED_ORIGINS = []" }).status, "PASS");
   assert.equal(run(10, { "a.ts": "" }).status, "FAIL");
-  assert.equal(run(10, { "a.ts": "" }, { ...base, live: { csrf: { status: 403 } } }).status, "PASS");
+  assert.equal(run(10, { "a.ts": "" }, { ...base, live: { csrf: { status: 403 } } }).status, "UNKNOWN");
   const open = run(10, { "middleware.ts": "csrf" }, { ...base, live: { csrf: { status: 200 } } });
-  assert.equal(open.status, "PASS");
+  assert.equal(open.status, "UNKNOWN");
   assert.match(open.note, /inconclusive/);
   const none = run(10, { "a.ts": "" }, { ...base, live: { csrf: { status: 200 } } });
-  assert.equal(none.status, "FAIL");
+  assert.equal(none.status, "UNKNOWN");
   assert.match(none.note, /inconclusive/);
 });
 
@@ -32,7 +32,7 @@ test("gate 11: three headers in source or helmet; live headers override", () => 
   const partial = run(11, { "lib/headers.ts": "Strict-Transport-Security" });
   assert.equal(partial.status, "FAIL");
   assert.match(partial.note, /frame-ancestors/);
-  const live = run(11, {}, { ...base, live: { headers: { "strict-transport-security": "max-age=1", "content-security-policy": "frame-ancestors 'none'", "x-content-type-options": "nosniff" } } });
+  const live = run(11, {}, { ...base, live: { finalUrl: "https://app.example/", headers: { "strict-transport-security": "max-age=1", "content-security-policy": "frame-ancestors 'none'", "x-content-type-options": "nosniff" } } });
   assert.equal(live.status, "PASS");
   assert.equal(run(11, { "next.config.ts": src }, { ...base, live: { headers: {} } }).status, "FAIL");
 });

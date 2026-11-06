@@ -1,4 +1,4 @@
-import { parseHumanGates, humanGateState, daysBetween, DEFAULTS } from "./humanGates.mjs";
+import { parseHumanGates, humanGateState, daysBetween, DEFAULTS, checkConfig, isDate } from "./humanGates.mjs";
 import { hasBuildScript } from "./stage.mjs";
 
 const PASS = (note) => ({ status: "PASS", note });
@@ -50,6 +50,25 @@ function untrustedSecrets(repo, workflows) {
   return null;
 }
 
+function activeCI(text, gitlab) {
+  const lines = text.split("\n");
+  const removed = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*(?:-\s*)?if:\s*(?:false|\$\{\{\s*false\s*\}\})\s*$/.test(lines[i]) && !(gitlab && /^\s*when:\s*(manual|never)\s*$/.test(lines[i]))) continue;
+    const indent = lines[i].search(/\S/);
+    let start = i;
+    if (!/^\s*-/.test(lines[i])) {
+      for (let j = i - 1; j >= 0; j--) {
+        if (lines[j].trim() && (lines[j].search(/\S/) < indent || (lines[j].search(/\S/) === indent && /^\s*-/.test(lines[j])))) { start = j; break; }
+      }
+    }
+    const base = lines[start].search(/\S/);
+    let end = start + 1;
+    while (end < lines.length && (!lines[end].trim() || lines[end].search(/\S/) > base)) end++;
+    for (let j = start; j < end; j++) removed.add(j);
+  }
+  return lines.filter((_, i) => !removed.has(i)).join("\n");
+}
 function gate1(repo) {
   const workflows = repo.files.filter((f) => WORKFLOW_RE.test(f));
   if (workflows.length === 0) return FAIL("no CI workflow (.github/workflows/*.yml or .gitlab-ci.yml)");
@@ -59,8 +78,8 @@ function gate1(repo) {
   const problems = [];
   for (const wf of workflows) {
     // Comments blanked: `# npm test` is a note to self, not a step that runs.
-    const text = repo.code(wf).join("\n");
-    const triggers = /(^|[\s\[,])(push|pull_request|merge_request)\b/.test(triggerBlock(text));
+    const text = activeCI(repo.code(wf).join("\n"), wf === ".gitlab-ci.yml");
+    const triggers = wf === ".gitlab-ci.yml" || /(^|[\s\[,])(push|pull_request|merge_request)\b/.test(triggerBlock(text));
     if (!triggers) { problems.push(`${wf}: no push/pull_request trigger`); continue; }
     if (!TEST_STEP_RE.test(text)) { problems.push(`${wf}: no test step`); continue; }
     if (needBuild && !BUILD_STEP_RE.test(text)) { problems.push(`${wf}: no build step`); continue; }
@@ -82,11 +101,16 @@ function gate2(repo, ctx = {}) {
   if (!config) return FAIL("no .github/dependabot.yml, renovate config, or dependency-scanner workflow");
   const a = ctx.audit;
   if (!a) return PASS(`${config} present; audit not run (--no-audit)`);
-  if (a.nothing) return PASS(`${config} present; nothing to audit (${a.nothing})`);
-  if (a.skipped) return UNKNOWN(`${config} present; audit not verified: ${a.skipped}`);
-  const bad = a.findings ?? a.high + a.critical;
-  const summary = a.findings !== undefined ? `${a.tool}: ${a.findings} known vulnerabilities` : `${a.tool}: ${a.high} high, ${a.critical} critical`;
-  return bad > 0 ? FAIL(`${config} present but ${summary}`) : PASS(`${config} present; ${summary}`);
+  const parts = a.parts ?? [a];
+  const summaries = parts.map((p) => p.nothing ? `${p.manifest ?? p.tool}: nothing to audit (${p.nothing})`
+    : p.skipped ? `${p.manifest ?? p.tool}: audit not verified: ${p.skipped}`
+    : p.findings !== undefined ? `${p.tool}: ${p.findings} known vulnerabilities`
+    : `${p.tool}: ${p.high} high, ${p.critical} critical`);
+  const skipped = parts.flatMap((p) => (p.skippedPackages ?? []).map((d) => `${d.name}: ${d.reason}`));
+  const note = `${config} present; ${[...summaries, ...skipped].join("; ")}`;
+  if (parts.some((p) => (p.findings ?? (p.high ?? 0) + (p.critical ?? 0)) > 0)) return FAIL(note);
+  if (parts.some((p) => p.skipped) || skipped.length) return UNKNOWN(note);
+  return PASS(note);
 }
 
 const ENV_IGNORE = new Set(["NODE_ENV", "CI", "PORT", "HOME", "PATH", "TZ", "NEXT_RUNTIME", "NEXT_TELEMETRY_DISABLED", "NEXT_PHASE", "VERCEL", "VERCEL_ENV", "VERCEL_URL", "VERCEL_GIT_COMMIT_SHA", "GITHUB_ACTIONS", "PYTHONPATH", "DJANGO_SETTINGS_MODULE"]);
@@ -111,6 +135,7 @@ function gate3(repo) {
       }
     });
   }
+  if (Object.keys(repo.notScanned()).length) return UNKNOWN(`source not scanned: ${Object.keys(repo.notScanned()).join(", ")}`);
   if (reads.size === 0) return PASS("no environment variables read in source");
   const example = envExample(repo);
   if (!example) return FAIL(`${reads.size} env vars read but no .env.example (first: ${[...reads.keys()].slice(0, 3).join(", ")})`);
@@ -123,7 +148,12 @@ function gate3(repo) {
 function gate4(repo, ctx) {
   const text = repo.read("HUMAN-GATES.md");
   if (text === null) return FAIL("HUMAN-GATES.md missing");
-  const state = humanGateState(parseHumanGates(text), ctx.today);
+  const parsed = parseHumanGates(text);
+  const checked = checkConfig(parsed.config);
+  if (checked.errors.length) return FAIL(checked.errors.join("; "));
+  parsed.config = checked.config;
+  const state = humanGateState(parsed, ctx.today);
+  if (state.invalid.length) return FAIL(`invalid human gate date: ${state.invalid.map((l) => `${l.created} due ${l.due}`).join(", ")}`);
   if (state.stale.length) return STALE(`${state.stale.length} open line(s) older than ${state.staleDays} days or past due: ` + state.stale.slice(0, 3).map((l) => `"${l.text}"`).join(", "));
   return PASS(`${state.open.length} open, none stale`);
 }
@@ -203,7 +233,10 @@ function gate6(repo, ctx) {
   const live = ctx.live?.health;
   if (live) {
     if (live.status !== 200) return FAIL(`live: ${live.status} from health endpoint`);
-    if (!/version|sha|commit/i.test(live.body)) return FAIL("live: 200 but body has no version field");
+    let body;
+    try { body = JSON.parse(live.body); } catch { return FAIL("live: 200 but body is not JSON with a version field"); }
+    const version = body && typeof body === "object" && !Array.isArray(body) ? body.version ?? body.sha ?? body.commit ?? body.git_sha : null;
+    if (!(typeof version === "string" && version.trim() && !/^(dev|unknown|undefined|null|latest)$/i.test(version.trim())) && !(typeof version === "number" && Number.isFinite(version))) return FAIL(`live: 200 but no meaningful version field (${JSON.stringify(version)})`);
     return PASS("live: 200 with version");
   }
   const byPath = repo.files.find((f) => HEALTH_PATH_RE.test(f) && !repo.isTestPath(f));
@@ -214,7 +247,7 @@ function gate6(repo, ctx) {
 }
 
 const BACKUP_RE = /\b(pg_dump|mysqldump|mongodump|sqlite3 .* \.backup|litestream|backup)\b/i;
-const DATE_RE = /\b(\d{4}-\d{2}-\d{2})\b/;
+const DATE_RE = /^\s*(?:Date|Last drill|Last run|Completed):\s*(\d{4}-\d{2}-\d{2})\b/im;
 
 function gate7(repo, ctx) {
   const candidates = repo.files.filter((f) => /^\.github\/workflows\/|^scripts\/|^supabase\/|^\.gitlab-ci\.yml$/.test(f));
@@ -225,7 +258,9 @@ function gate7(repo, ctx) {
   const date = drill.match(DATE_RE)?.[1];
   if (!date) return FAIL("docs/ops/restore-drill.md has no YYYY-MM-DD date");
   const max = ctx.config.drill_max_days ?? DEFAULTS.drill_max_days;
+  if (!isDate(date)) return FAIL(`invalid restore drill date: ${date}`);
   const age = daysBetween(date, ctx.today);
+  if (age < 0) return FAIL(`restore drill date ${date} is in the future`);
   if (age > max) return STALE(`restore drill dated ${date} is ${age} days old (max ${max})`);
   return PASS(`backup job at ${loc(job)}; restore drill ${date} (${age} days ago)`);
 }
@@ -260,6 +295,7 @@ function gate9(repo) {
       if (!GUARD_RE.test(window)) violations.push({ file: f, line: i + 1 });
     }
   }
+  if (!violations.length && Object.keys(repo.notScanned()).length) return UNKNOWN(`source not scanned: ${Object.keys(repo.notScanned()).join(", ")}`);
   if (calls === 0) return PASS("no external HTTP calls found in source");
   if (violations.length) return FAIL(`${violations.length} of ${calls} calls without a timeout/signal: ${list(violations)}`);
   return PASS(`${calls} external calls, all with a timeout or abort signal`);
@@ -273,29 +309,35 @@ const stemOf = (f) => f.split("/").pop().replace(/\.[^.]+$/, "");
 
 /** A helper is evidence only if the framework loads it or another source file imports it:
  * `fix --write` drops lib/server/csrf.ts in place, and until middleware imports it nothing is protected. */
-function wired(repo, file) {
+function wired(repo, file, seen = new Set()) {
+  if (seen.has(file)) return false;
+  seen = new Set([...seen, file]);
   if (ENTRY_RE.test(file)) return true;
   const importRe = new RegExp(`\\b(import|require|from)\\b.*["'./\\s]${stemOf(file)}\\b`);
-  return repo.grep(importRe, repo.sourceFiles().filter((f) => f !== file)).length > 0;
+  return repo.grep(importRe, repo.sourceFiles().filter((f) => f !== file)).some((h) => wired(repo, h.file, seen));
 }
-const unwired = (file) => `${file} has the check but is not imported by any source file — wire it up`;
+const unwired = (file) => `${file} has the check but is not reachable from a recognized entry point — wire it up`;
 
 const CSRF_RE = /csrf|headers\.get\(["']origin["']\)|headers\[["']origin["']\]|request\.headers\.get\(["']origin["']\)|CSRF_TRUSTED_ORIGINS|CsrfViewMiddleware|csurf|sameSite:\s*["']strict["']/i;
 
 function gate10(repo, ctx) {
   const live = ctx.live?.csrf ?? null;
-  if (live && live.status === 403) return PASS("live: cross-origin POST → 403");
   const hits = repo.grep(CSRF_RE, repo.sourceFiles());
   const hit = hits.find((h) => wired(repo, h.file));
   const staticResult = hit
-    ? PASS(`static: origin/CSRF check at ${loc(hit)} (pass --url --csrf-post to test it live)`)
+    ? PASS(`static: origin/CSRF check at ${loc(hit)} (loading and mutation-route protection not verified)`)
     : FAIL(hits.length ? unwired(hits[0].file) : "no Origin/Referer or CSRF check in source");
   if (live && ![404, 405].includes(live.status)) {
     staticResult.note += `; live: cross-origin POST to the health route → ${live.status}, inconclusive (not a mutation route)`;
   }
+  if (live) return UNKNOWN(`${staticResult.note}; health POST is inconclusive for mutation-route CSRF protection`);
   return staticResult;
 }
 
+function validFrames(csp) {
+  const value = csp.match(/(?:^|;)\s*frame-ancestors\s+([^;]+)/i)?.[1]?.trim();
+  return Boolean(value && value.split(/\s+/).every((v) => /^('self'|'none'|https?:\/\/[^*\s]+)$/.test(v)));
+}
 const HEADER_CHECKS = [
   ["Strict-Transport-Security", /strict-transport-security|SECURE_HSTS_SECONDS/i],
   ["frame-ancestors", /frame-ancestors|X-Frame-Options|X_FRAME_OPTIONS/i],
@@ -306,15 +348,21 @@ function gate11(repo, ctx) {
   const live = ctx.live?.headers;
   if (live) {
     const missing = [];
-    if (!live["strict-transport-security"]) missing.push("Strict-Transport-Security");
-    if (!/frame-ancestors/i.test(live["content-security-policy"] ?? "") && !live["x-frame-options"]) missing.push("frame-ancestors");
-    if (!/nosniff/i.test(live["x-content-type-options"] ?? "")) missing.push("nosniff");
+    if (!/\bmax-age\s*=\s*[1-9]\d*\b/i.test(live["strict-transport-security"] ?? "")) missing.push(`Strict-Transport-Security (${live["strict-transport-security"] ?? "absent"})`);
+    if (!validFrames(live["content-security-policy"] ?? "") && !/^(DENY|SAMEORIGIN)$/i.test(live["x-frame-options"] ?? "")) missing.push("frame-ancestors");
+    if (!/^nosniff$/i.test(live["x-content-type-options"] ?? "")) missing.push("nosniff");
+    if (!missing.length && !ctx.live.finalUrl?.startsWith("https://")) return UNKNOWN("live: HSTS requires https transport");
     return missing.length ? FAIL(`live: missing ${missing.join(", ")}`) : PASS("live: HSTS, frame-ancestors, nosniff present");
   }
   const files = repo.sourceFiles().concat(repo.files.filter((f) => /^(next\.config\.[cm]?[jt]s|vercel\.json|netlify\.toml|_headers)$/.test(f)));
   const wiredFiles = files.filter((f) => wired(repo, f));
   if (repo.grep(/helmet\(/, wiredFiles)[0]) return PASS("static: helmet() in use (pass --url to verify)");
-  const missing = HEADER_CHECKS.filter(([, re]) => !repo.grep(re, wiredFiles)[0]).map(([n]) => n);
+  const missing = HEADER_CHECKS.filter(([name, re]) => !repo.grep(re, wiredFiles).some((h) => {
+    const line = repo.code(h.file)[h.line - 1];
+    if (name === "Strict-Transport-Security") return !/SECURE_HSTS_SECONDS\s*=\s*0\b|max-age=0\b/i.test(line);
+    if (name === "frame-ancestors") return !/X_FRAME_OPTIONS\s*=\s*["']\s*["']|frame-ancestors\s+(?:\*|https?:)(?:["';\s]|$)/i.test(line);
+    return !/SECURE_CONTENT_TYPE_NOSNIFF\s*=\s*False/i.test(line);
+  })).map(([n]) => n);
   if (!missing.length) return PASS("static: HSTS, frame-ancestors, nosniff configured (pass --url to verify)");
   const orphan = files.find((f) => !wiredFiles.includes(f) && HEADER_CHECKS.some(([, re]) => repo.grep(re, [f])[0]));
   return FAIL(`static: not set anywhere: ${missing.join(", ")}` + (orphan ? `; ${unwired(orphan)}` : ""));
@@ -333,7 +381,7 @@ function findRetention(repo, files) {
     for (let i = 0; i < lines.length; i++) {
       if (!RETENTION_RE.test(lines[i])) continue;
       const window = lines.slice(i, i + 4).join("\n");
-      if (RETENTION_COMPANION_RE.test(window)) return { file, line: i + 1 };
+      if (RETENTION_COMPANION_RE.test(window) && /log|audit|event/i.test(window) && /delete|purge|prune|clean|sweep/i.test(window) && !/^\s*retention-days:/.test(lines[i])) return { file, line: i + 1 };
     }
   }
   return null;
@@ -347,7 +395,7 @@ function gate12(repo) {
   if (!limit) missing.push("no input size limit (validator .max(), maxLength, body limit)");
   if (!retention) missing.push("no retention/cleanup job for log tables");
   if (missing.length) return FAIL(missing.join("; "));
-  return PASS(`size limit at ${loc(limit)}; retention at ${loc(retention)}`);
+  return PASS(`static: size limit at ${loc(limit)}; retention at ${loc(retention)}; execution not verified`);
 }
 
 // English, eight other languages, or gdpr, so a localized privacy page counts as evidence too.

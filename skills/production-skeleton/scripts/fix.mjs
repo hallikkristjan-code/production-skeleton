@@ -105,12 +105,12 @@ export function applyFix(root, plan, { today = new Date().toISOString().slice(0,
     if (existsSync(abs)) continue; // never overwrite, even if the plan is stale
     mkdirSync(dirname(abs), { recursive: true });
     let content = readFileSync(a.src, "utf8");
-    if (a.dest === "HUMAN-GATES.md") content = content.replace(/^stage: \d+$/m, `stage: ${plan.stage}`);
+    if (a.dest === "HUMAN-GATES.md") content = content.replace(/^stage: \d+\r?\n/m, "");
     writeFileSync(abs, content);
     written.push(a.dest);
   }
   const hgPath = join(root, "HUMAN-GATES.md");
-  if (!existsSync(hgPath)) writeFileSync(hgPath, `---\nstage: ${plan.stage}\nstale_days: 7\ndrill_max_days: 90\n---\n# Human gates\n\n`);
+  if (!existsSync(hgPath)) writeFileSync(hgPath, `---\nstale_days: 7\ndrill_max_days: 90\n---\n# Human gates\n\n`);
   const existing = parseHumanGates(readFileSync(hgPath, "utf8")).lines.map((l) => l.text);
   const humanGatesAdded = [];
   for (const a of plan.actions) {

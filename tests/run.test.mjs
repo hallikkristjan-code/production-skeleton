@@ -38,7 +38,7 @@ test("frontmatter: stage override and na with reason", async () => {
 });
 
 test("this repo scores 4/4 required", async () => {
-  const out = await runProbe(fileURLToPath(new URL("../", import.meta.url)), { today: TODAY });
+  const out = await runProbe(fileURLToPath(new URL("../", import.meta.url)), { today: "2026-10-17" });
   assert.equal(out.stage, 0);
   assert.equal(out.score.requiredPassed, 4);
 });

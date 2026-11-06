@@ -48,7 +48,7 @@ test("applyFix writes files, never overwrites, appends human gates once", async 
   assert.ok(existsSync(join(root, "app/api/health/route.ts")));
   assert.equal(readFileSync(join(root, "docs/ops/rollback.md"), "utf8"), "KEEP");
   const hg = readFileSync(join(root, "HUMAN-GATES.md"), "utf8");
-  assert.match(hg, /^stage: 1$/m);
+  assert.doesNotMatch(hg, /^stage:/m);
   assert.match(hg, new RegExp(`^- \\[ \\] ${TODAY} .*BACKUP_DATABASE_URL`, "m"));
   assert.ok(r1.humanGatesAdded.length >= 2);
   // second run: nothing to write, no duplicate human-gate lines

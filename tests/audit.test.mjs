@@ -16,7 +16,7 @@ test("parseNpmAudit: garbage → null", () => {
 });
 test("runAudit: no lockfile → skipped, nothing spawned", () => {
   const r = runAudit(loadRepo(makeRepo({ "package.json": '{"dependencies":{"a":"1"}}' })));
-  assert.deepEqual(r, { tool: "npm audit", skipped: "no package-lock.json" });
+  assert.deepEqual(r, { manifest: "package.json", tool: "npm audit", skipped: "no package-lock.json" });
 });
 test("runAudit: no package.json at all → skipped", () => {
   const r = runAudit(loadRepo(makeRepo({ "a.py": "" })));
@@ -47,7 +47,9 @@ test("runAudit: uv project (pyproject + uv.lock) is audited via `uv export` → 
   const root = makeRepo({ "pyproject.toml": '[project]\nname = "x"\nversion = "0"\nrequires-python = ">=3.10"\ndependencies = ["requests==2.25.0"]\n' });
   const lock = spawnSync("uv lock", { cwd: root, shell: true, encoding: "utf8" });
   if (lock.status !== 0) return t.skip(`uv lock failed (offline?): ${lock.stderr}`);
-  const r = runAudit(loadRepo(root));
+  const combined = runAudit(loadRepo(root));
+  const r = combined.parts.find((p) => p.manifest === "uv.lock");
+  assert.ok(combined.parts.some((p) => p.manifest === "pyproject.toml" && p.skipped));
   assert.equal(r.tool, "pip-audit (uv export)");
   assert.ok(r.findings > 0, JSON.stringify(r)); // requests 2.25.0 has known CVEs
 });

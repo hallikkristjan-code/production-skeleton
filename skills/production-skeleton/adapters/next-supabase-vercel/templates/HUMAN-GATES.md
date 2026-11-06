@@ -1,5 +1,4 @@
 ---
-stage: 1
 stale_days: 7
 drill_max_days: 90
 ---

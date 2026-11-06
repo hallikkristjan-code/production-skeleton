@@ -93,6 +93,14 @@ export function loadRepo(root) {
   const exists = (rel) => existsSync(join(root, rel));
   const isTestPath = (rel) => TEST_PATH_RE.test(rel) || TEST_FILE_RE.test(rel) ||
     (SCAFFOLD_PATH_RE.test(rel) && !PAGE_TEMPLATE_RE.test(rel));
+  const notScanned = () => {
+    const counts = {};
+    for (const f of files.filter((f) => !isTestPath(f))) {
+      const ext = f.match(/\.(go|rs|java|kt|rb|php|cs|cpp|c|vue|svelte|astro)$/)?.[0];
+      if (ext) counts[ext] = (counts[ext] ?? 0) + 1;
+    }
+    return counts;
+  };
   const sourceFiles = () => files.filter((f) => SOURCE_EXT_RE.test(f) && !DECLARATION_RE.test(f) && !isTestPath(f));
   const grep = (re, filter = files) => {
     const hits = [];
@@ -128,5 +136,5 @@ export function loadRepo(root) {
   /** read() with comments blanked — what a gate may treat as evidence. */
   const code = (rel) => codeLines(rel, read(rel) ?? "");
 
-  return { root, files, read, code, exists, grep, isTestPath, sourceFiles, tracked, firstCommitDate };
+  return { root, files, read, code, exists, grep, isTestPath, sourceFiles, notScanned, tracked, firstCommitDate };
 }

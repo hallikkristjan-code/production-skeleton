@@ -4,6 +4,21 @@
 
 A reliability round before wider distribution. No new gates, no new adapters.
 
+### Probe safety and coverage
+
+- Python audits accept exact pins only, with pip resolution and builds disabled.
+  Skipped packages, nested manifests and incomplete ecosystem coverage are explicit.
+- Generated registers leave maturity detection automatic; lower manual overrides
+  are retained with a warning.
+- Health responses require JSON with a meaningful version; live security headers
+  require enabled values and HTTPS. A health POST never proves mutation-route CSRF.
+- Invalid/future dates, disabled CI jobs, artifact retention mistaken for log cleanup,
+  unsupported source files and dead helper imports no longer give misleading passes.
+- Rollback guidance uses a reviewed compensating migration, target verification and
+  dry-run; an isolated database rehearsal remains necessary.
+- Regression suite: 201 tests on Windows with Node 20, 22 and 24. A generated Next 16
+  application builds successfully; database restore and hosted workflow checks remain manual.
+
 ### Probe: fewer false PASSes
 
 - Comments are never evidence, whether whole-line, trailing or block, in LF

@@ -31,6 +31,7 @@ export function renderMarkdown(out) {
   lines.push("");
   lines.push(`Stage: ${out.reasons.join("; ")}`);
   lines.push("");
+  if (out.coverage) lines.push(`Not covered: ${[...out.coverage.manifestsNotRead, ...Object.entries(out.coverage.notScanned).map(([ext, n]) => `${ext} (${n} files)`)].join(", ") || "none detected"}`, "");
   lines.push("| # | Gate | Stage | Status | Evidence |");
   lines.push("|---|---|---|---|---|");
   for (const r of out.results) {

@@ -23,6 +23,7 @@ export async function probeUrl(baseUrl, { timeoutMs = 5000, csrfPost = false } =
 
   try {
     const res = await get("/", { redirect: "follow" });
+    result.finalUrl = res.url;
     result.headers = Object.fromEntries([...res.headers].map(([k, v]) => [k.toLowerCase(), v]));
   } catch (e) { result.errors.push(`headers: ${e.message}`); }
 
