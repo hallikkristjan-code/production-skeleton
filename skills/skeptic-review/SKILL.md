@@ -114,6 +114,21 @@ written here so reports are comparable.
      pull requests or manually dispatched branches, and any doc that says to
      add it to "all environments". Code that nobody reviewed yet running with
      a production key is ❌.
+   - **Hard-coded accounts:** search seeds, migrations, fixtures and code for
+     a fixed user or password (`admin/admin`, a default password in a
+     migration, `if (email === "owner@…")` as an admin check, a shared
+     `ADMIN_PASSWORD`). Follow each hit: if it can reach production (a
+     migration that runs there, a seed the deploy runs, a code branch with no
+     environment guard) it is ❌; a fixture that only local setup loads is ✅
+     with the line that keeps it local.
+   - **Hand-rolled auth:** who verifies identity — an established provider
+     (TARA, an OIDC/OAuth2 provider, the platform's auth) or the app's own
+     code? Own code needs a password hash built for passwords (bcrypt,
+     scrypt, argon2 — a plain or salted SHA/MD5 is ❌), session or reset
+     tokens from a cryptographic random source (`Math.random`, timestamps or
+     user ids are ❌), and JWT checks done by a library that pins the
+     algorithm and checks expiry. A hand-written login flow where a provider
+     was available is ⚠️ even when it passes these.
 3. **External integrations** — how is each authenticated? what happens when a
    partner is down? retry/backoff? idempotency (can the same operation run
    twice)?
@@ -127,6 +142,13 @@ written here so reports are comparable.
 5. **Security** — SQLi? XSS? CSRF? CSP headers? rate limiting? login
    brute-force protection? CONTINUOUS dependency CVE scanning (Dependabot /
    Renovate / audit in CI — a one-off `npm audit` does not count as ✅)?
+   **Hand-rolled primitives:** list code that reimplements what the standard
+   library or a maintained package already does — date and time-zone math,
+   money as floating point, CSV or HTML parsing, HTML sanitizing, encryption
+   or signing, URL or e-mail validation used as a security check. Each needs
+   a reason in the code or docs; a hand-written sanitizer or crypto routine is
+   ❌, other primitives are ⚠️ with the input that would break them (a DST
+   switch, a time zone other than the server's, 0.1 + 0.2, a quoted comma).
 6. **Data protection** — where does personal data live (per table)? privacy
    mapping documented (GDPR or the local equivalent)? log/audit retention defined AND enforced? right to be
    forgotten mechanism (soft-archive is not deletion; mind the backup copies)?
@@ -203,6 +225,7 @@ written here so reports are comparable.
 | "There is a backup → architecture ✅" | Without RPO/RTO numbers a backup is half an answer. A weekly backup is a 7-day RPO — say it. |
 | "Overall it feels mature, verdict: ready" | The verdict comes from the section table and the skeleton scorecard, not from the impression. Count the ❌. |
 | "The privacy / AI / continuity sections do not seem relevant" | The three most often skipped. If truly N/A, write why. |
+| "Two slop patterns already — the rest will be the same, stop here" | Patterns are findings, not a verdict. Hard-coded accounts, hand-rolled auth and hand-rolled primitives go into Top-3 risks, and the audit still runs all 14 sections: the fix list needs every hole, not the first one. |
 | "It is a solo project, processes do not apply" | Operations is never N/A for a deployed app. Grade the short version: who answers when the owner is away, where that is written. |
 
 ## Typical mistakes

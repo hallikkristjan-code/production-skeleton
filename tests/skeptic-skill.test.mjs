@@ -53,6 +53,15 @@ test("no private names, no dated internal notes", () => {
   assert.doesNotMatch(md, /ERSO|tuur|2026-07-28|Arendus/);
 });
 
+test("checklist names the slop patterns: hard-coded accounts, hand-rolled auth, hand-rolled primitives", () => {
+  const checklist = md.slice(md.indexOf("## Checklist"), md.indexOf("## Red flags"));
+  assert.match(checklist, /\*\*Hard-coded accounts:\*\*/);
+  assert.match(checklist, /\*\*Hand-rolled auth:\*\*/);
+  assert.match(checklist, /\*\*Hand-rolled primitives:\*\*/);
+  assert.match(checklist, /date/i);
+  assert.match(md, /Top-3 risks.*hand-rolled|hand-rolled.*Top-3/is);
+});
+
 test("checklist asks for the seams a breadth audit misses: every path, side paths, read-then-write", () => {
   assert.match(md, /every (read|write)? ?path/i);
   assert.match(md, /side path/i);
