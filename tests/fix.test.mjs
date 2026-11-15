@@ -92,3 +92,25 @@ test("gate 2 failing plans both dependabot and an OSV-Scanner workflow; passing 
   const passing = await planFix(makeRepo({ ...NEXT, ".github/dependabot.yml": "version: 2" }), { today: TODAY });
   assert.equal(passing.actions.find((a) => a.dest === ".github/workflows/osv-scanner.yml").action, "skip-pass");
 });
+
+// docs/ops/incident.md is not a gate: the probe never checks it. It rides along with gate 5
+// (an alert needs a next step), is written even when gate 5 passes, and skipped only when gate 5 is N/A.
+test("incident runbook: planned even when gate 5 passes, with a human gate to name the receiver", async () => {
+  const plan = await planFix(makeRepo(NEXT), { today: TODAY });
+  const incident = plan.actions.find((a) => a.dest === "docs/ops/incident.md");
+  assert.equal(incident.action, "write");
+  assert.equal(incident.gate, null);
+  assert.match(incident.humanGate, /incident\.md/);
+  const tracked = { ...NEXT, "instrumentation.ts": 'import * as Sentry from "@sentry/nextjs";\nSentry.init({ dsn: process.env.SENTRY_DSN });\n', ".env.example": "SENTRY_DSN=\n" };
+  const planPass = await planFix(makeRepo(tracked), { today: TODAY });
+  assert.ok(planPass.actions.filter((a) => a.gate === 5).every((a) => a.action === "skip-pass"), "gate 5 passes in this fixture");
+  assert.equal(planPass.actions.find((a) => a.dest === "docs/ops/incident.md").action, "write");
+});
+
+test("incident runbook: skipped when gate 5 is N/A, never overwritten", async () => {
+  const na = await planFix(makeRepo({ ...NEXT, "HUMAN-GATES.md": "---\nna:\n  5: internal tool, errors go to the hosting log\n---\n" }), { today: TODAY });
+  assert.equal(na.actions.find((a) => a.dest === "docs/ops/incident.md").action, "skip-na");
+  const root = makeRepo({ ...NEXT, "docs/ops/incident.md": "KEEP" });
+  applyFix(root, await planFix(root, { today: TODAY }), { today: TODAY });
+  assert.equal(readFileSync(join(root, "docs/ops/incident.md"), "utf8"), "KEEP");
+});

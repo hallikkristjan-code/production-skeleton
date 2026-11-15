@@ -11,13 +11,28 @@ test("frontmatter: name and a description with English and Estonian triggers", (
   for (const phrase of ["/skeptic-review", "production readiness", "skeptiku audit"]) assert.ok(description.includes(phrase), phrase);
 });
 
-test("13 numbered checklist sections, Architecture first, Top-3 risks last", () => {
+test("14 numbered checklist sections, Architecture first, Operations before Top-3 risks last", () => {
   const checklist = md.slice(md.indexOf("## Checklist"), md.indexOf("## Red flags"));
   const items = [...checklist.matchAll(/^(\d+)\. \*\*([^*]+)\*\*/gm)].map((m) => [Number(m[1]), m[2]]);
-  assert.equal(items.length, 13);
-  assert.deepEqual(items.map(([n]) => n), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+  assert.equal(items.length, 14);
+  assert.deepEqual(items.map(([n]) => n), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   assert.equal(items[0][1], "Architecture");
-  assert.equal(items[12][1], "Top-3 risks");
+  assert.equal(items[12][1], "Operations");
+  assert.equal(items[13][1], "Top-3 risks");
+});
+
+test("the section count is the same everywhere it is stated", () => {
+  assert.doesNotMatch(md, /13[- ]section|all 13 (areas|sections)|Checklist \(13/);
+  const yaml = readFileSync(new URL("../skills/skeptic-review/agents/openai.yaml", import.meta.url), "utf8");
+  assert.match(yaml, /14 sections/);
+});
+
+test("Operations asks for the processes behind the code: incidents, support, change, lifecycle, failover", () => {
+  const checklist = md.slice(md.indexOf("## Checklist"), md.indexOf("## Red flags"));
+  const ops = checklist.slice(checklist.indexOf("**Operations**"), checklist.indexOf("**Top-3 risks**"));
+  for (const re of [/incident/i, /support/i, /change/i, /end[- ]of[- ]life|EOL/, /failover/i, /redundan/i, /rotat/i]) {
+    assert.match(ops, re, String(re));
+  }
 });
 
 test("mandatory blocks are present in order", () => {

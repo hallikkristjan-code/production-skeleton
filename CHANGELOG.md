@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+Operations: the processes behind a running app, graded by the audit and
+started by `fix`. No new gates.
+
+- `skeptic-review` has a 14th section, **Operations**, before Top-3 risks:
+  incident handling, a support channel, how changes reach production,
+  runtime and framework end-of-life, redundancy and failover against the RTO,
+  and secret rotation. A process counts only with a trace that it is followed.
+  The skeleton gates are unchanged.
+- `fix` writes `docs/ops/incident.md` for the Next.js adapter: who receives
+  alerts, who stands in, where users report problems, the first 15 minutes,
+  an incident log. It is not a gate and is skipped only when gate 5 is N/A.
+- The README names what the skeleton does not check: redundancy, failover,
+  support, end-of-life, change approval, secret rotation.
+
 ## 0.2.1 — 2026-11-07
 
 Found by following the README in a clean session on a fresh create-next-app

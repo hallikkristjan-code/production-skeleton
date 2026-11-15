@@ -9,6 +9,7 @@
     { "gate": 4, "src": "templates/HUMAN-GATES.md", "dest": "HUMAN-GATES.md" },
     { "gate": 5, "src": null, "dest": null, "humanGate": "Install an error tracker (e.g. `npx @sentry/wizard@latest -i nextjs`) and add its DSN to the hosting env" },
     { "gate": 5, "src": null, "dest": null, "humanGate": "Throw one test error in production and confirm the alert reaches you (the probe cannot see delivery)" },
+    { "gate": null, "follows": 5, "src": "templates/incident.md", "dest": "docs/ops/incident.md", "humanGate": "Fill in docs/ops/incident.md: who receives alerts, who stands in, where users report problems", "note": "not a gate: the probe does not check it" },
     { "gate": 6, "src": "templates/health-route.ts", "dest": "{app}/api/health/route.ts", "requires": { "deps": ["@supabase/supabase-js", "typescript"], "minMajor": { "next": 15 } } },
     { "gate": 7, "src": "templates/backup.yml", "dest": ".github/workflows/backup.yml", "requires": { "deps": ["@supabase/supabase-js"] }, "humanGate": "Backup: create a gpg keypair, commit the public half as .github/backup-public.asc, add repo secret BACKUP_DATABASE_URL (Supabase session-pooler URI)" },
     { "gate": 7, "src": null, "dest": null, "requires": { "deps": ["@supabase/supabase-js"] }, "humanGate": "Backup scope: the dump holds schema public only — decide how auth users and Storage files are backed up, and record it in docs/ops/restore-drill.md" },

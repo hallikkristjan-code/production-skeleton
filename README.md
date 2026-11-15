@@ -36,7 +36,7 @@ What it requires grows with the app: a library or a tool needs 1 to 4, an app
 that stores personal data needs 1 to 9, an app that takes payments needs all 13.
 
 **skeptic-review** is for an app that is already running. It is that skeptic
-as a skill: it audits 13 areas and accepts only evidence it can point to in
+as a skill: it audits 14 areas and accepts only evidence it can point to in
 the code. "We have backups"
 without a file and line counts as no.
 
@@ -181,6 +181,12 @@ deep OWASP. Other tools do those; this one is the floor. An OWASP skill such as
 [agamm/claude-code-owasp](https://github.com/agamm/claude-code-owasp) asks
 whether the code is secure; this one asks whether the app survives. Run both.
 
+Also not gates: redundancy, failover, a support desk, runtime end-of-life
+tracking, change approval, secret rotation. They are processes, and a probe
+cannot see a process being followed. `skeptic-review` grades them in its
+Operations section, and `fix` writes `docs/ops/incident.md` (who gets the
+alert, the first 15 minutes, a log) as a starting point, without a gate.
+
 ## HUMAN-GATES.md — the part no tool can do
 
 Some things only a human can do: a GPG passphrase, a repo secret, a DNS
@@ -206,7 +212,7 @@ appends lines for what it could not do itself.
 
 ## skeptic-review — proving the floor holds
 
-`/skeptic-review` is a 13-section production-readiness audit with one rule:
+`/skeptic-review` is a 14-section production-readiness audit with one rule:
 **a claim without a `file:line` is not a status, it is a guess.** Every section
 is ❌ until evidence says otherwise; N/A needs a reason; the report has a fixed
 shape (top-3 risks → section table → skeleton scorecard → quick wins → not
@@ -253,7 +259,7 @@ a generator, a human-gates register that ages, stage-based requirements, and a
 probe that returns evidence instead of prose. The audit is the pair that keeps
 the skeleton honest.
 
-The 13 audit sections were sparked by a comment under a post about a
+The first 13 audit sections were sparked by a comment under a post about a
 vibe-coded app; the wording, the evidence rule and the process are ours.
 
 ## Layout

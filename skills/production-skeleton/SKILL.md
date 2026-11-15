@@ -37,6 +37,8 @@ What --url sends: `GET /api/health` (falling back to `GET /health`) and `GET /` 
 
 `fix` writes only what can work in the project it finds, and says why it skipped the rest (`skip-requires`, `manual`). The one adapter is Next.js (15 or newer for the health route) + Supabase + Vercel: routes go under `src/app` when the app lives there; a Pages Router project, or one where `src/app/` sits next to a root `app/` or `pages/` (Next.js ignores `src/` then), gets a manual step instead of a route file; the CI workflow is an npm + TypeScript template that needs `package-lock.json`, `typescript` and both a `test` and a `build` script (with pnpm, yarn or bun the user writes it by hand); the `.ts` helpers need `typescript`. Read the plan's Action column to the user instead of promising that everything was generated.
 
+`fix` also writes `docs/ops/incident.md` (who receives alerts, the first 15 minutes, an incident log) unless gate 5 is N/A, and adds a human gate to fill in the names. It is not a gate and the probe never checks it; do not report it as a passed check.
+
 The backup workflow it generates dumps the Postgres schema `public` only (no auth users, no Storage files), keeps each encrypted dump as a 90-day artifact, refuses to run in a public repository, and commits nothing to the repo unless the owner opts in. The restore drill ships without a date: gate 7 stays FAIL until a human has restored into a throwaway database. Never write a drill date for a restore that did not happen.
 
 ## Session start (gate 4)

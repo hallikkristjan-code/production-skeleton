@@ -1,20 +1,20 @@
 ---
 name: skeptic-review
-description: Evidence-based production-readiness audit in 13 sections — every claim needs a file:line, N/A needs a reason, the verdict comes from the table, not the impression. Use only when explicitly asked — /skeptic-review, "production readiness review", "is this ready for production", "audit this checklist", "skeptiku audit", "kas see süsteem on production-valmis". Do NOT auto-trigger on ordinary feature or bugfix work. Pairs with production-skeleton — the skeleton builds the floor, this audit proves it holds.
+description: Evidence-based production-readiness audit in 14 sections — every claim needs a file:line, N/A needs a reason, the verdict comes from the table, not the impression. Use only when explicitly asked — /skeptic-review, "production readiness review", "is this ready for production", "audit this checklist", "skeptiku audit", "kas see süsteem on production-valmis". Do NOT auto-trigger on ordinary feature or bugfix work. Pairs with production-skeleton — the skeleton builds the floor, this audit proves it holds.
 ---
 
 # Skeptic Review — evidence-based production-readiness audit
 
 **Contents:** Overview · Process (6 steps) · Report shape (+ "I can do this now"
-rules) · Checklist (13 sections) · Red flags · Typical mistakes
+rules) · Checklist (14 sections) · Red flags · Typical mistakes
 
 ## Overview
 
-A 13-section skeptic's checklist, graded ONLY on evidence found in the code.
+A 14-section skeptic's checklist, graded ONLY on evidence found in the code.
 Core rule: **a claim without a `file:line` is not a status, it is a guess.**
 The default posture is skeptical: a section is ❌ until evidence shows otherwise.
 
-This audit covers breadth: all 13 areas in one pass. For per-path depth in the
+This audit covers breadth: all 14 areas in one pass. For per-path depth in the
 security section, hand off to a dedicated security review (in Claude Code: `/cso`).
 
 Reply in the language the user wrote in. Section names and statuses stay as
@@ -41,7 +41,7 @@ written here so reports are comparable.
    `node <skeleton-skill>/scripts/probe.mjs . --json`
    (`<skeleton-skill>` is the production-skeleton skill directory; add
    `--url <deployment>` when a deployment is reachable). Its rows are
-   `file:line` evidence for sections 1, 2, 3, 5, 6, 9, 10, 11 and 12 — cite them. Read
+   `file:line` evidence for sections 1, 2, 3, 5, 6, 9, 10, 11, 12 and 13 — cite them. Read
    ops documents (runbook, backup doc), but check every claim in them against
    code or a workflow.
 4. **Grade item by item:** every checklist item gets ✅ / ⚠️ / ❌ / ❓ / N/A plus
@@ -59,7 +59,7 @@ written here so reports are comparable.
 
 - **Top-3 risks** — concrete, with evidence, impact described in the user's
   language, not in audit jargon.
-- **Section table** — all 13 sections, N/A included (status + 1–2 sentences
+- **Section table** — all 14 sections, N/A included (status + 1–2 sentences
   with evidence).
 - **Skeleton scorecard** — the probe's score line and its failing rows, verbatim.
 - **Quick wins** — fixes under about an hour, as a separate list.
@@ -87,7 +87,7 @@ written here so reports are comparable.
   "I can do this now: nothing — the next step is your decision on X." Padding
   the list with trivial edits is a mistake.
 
-## Checklist (13 sections)
+## Checklist (14 sections)
 
 1. **Architecture** — stack? where does it run? where is the database?
    backups? disaster recovery? RPO and RTO AS NUMBERS (backup frequency →
@@ -166,7 +166,31 @@ written here so reports are comparable.
     not abstractly.
 12. **Business continuity** — AI service down? external API changes? partner
     quits? bus factor (who besides the owner can get in / knows the system)?
-13. **Top-3 risks** — the opening question of the checklist; answer it at the
+13. **Operations** — the processes that keep the system running after the code
+    is written. A process counts only with a trace that it is followed; a
+    document nobody has used is ⚠️, and settings you cannot see (branch
+    protection, on-call rota, vendor support plan) are ❓.
+    - **Incidents:** who gets the alert, and what do they do in the first 15
+      minutes (an incident runbook, cited)? where are past incidents written
+      down (a post-mortem, an issue label)? An alert with no named receiver is ❌.
+    - **Support:** where does a user report a problem (a channel named in the
+      app or docs) and who reads it? a stated response time? No channel is ❌.
+    - **Change:** how does a change reach production — reviewed, tested in CI,
+      deployed by a recorded pipeline, with a change log or release notes? A
+      manual deploy from a laptop with no record is ❌.
+    - **Lifecycle:** runtime, framework and database versions against their
+      end-of-life dates (cite the version line); domain and certificate renewal
+      (who, automatic?). A version past EOL is ❌.
+    - **Redundancy and failover:** what is single — one region, one instance,
+      one database, one person with the keys? what happens when it fails, and
+      does that match the RTO in section 1? "The host handles it" needs the
+      plan or setting that says so.
+    - **Secret rotation:** a written way to rotate each production secret, and
+      the date it last happened. A key that cannot be rotated without downtime
+      is ⚠️.
+    For a one-person project the short version is enough, but it has to exist:
+    who answers when the owner is away, and where that is written.
+14. **Top-3 risks** — the opening question of the checklist; answer it at the
     top of the report, with evidence.
 
 ## Red flags — these thoughts mean you are slipping
@@ -179,6 +203,7 @@ written here so reports are comparable.
 | "There is a backup → architecture ✅" | Without RPO/RTO numbers a backup is half an answer. A weekly backup is a 7-day RPO — say it. |
 | "Overall it feels mature, verdict: ready" | The verdict comes from the section table and the skeleton scorecard, not from the impression. Count the ❌. |
 | "The privacy / AI / continuity sections do not seem relevant" | The three most often skipped. If truly N/A, write why. |
+| "It is a solo project, processes do not apply" | Operations is never N/A for a deployed app. Grade the short version: who answers when the owner is away, where that is written. |
 
 ## Typical mistakes
 

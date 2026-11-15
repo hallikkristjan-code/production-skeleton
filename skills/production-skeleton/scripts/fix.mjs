@@ -75,8 +75,9 @@ export async function planFix(root, { today } = {}) {
   const actions = [];
   for (const f of adapter.files) {
     const base = { gate: f.gate, dest: fill(f.dest), humanGate: f.humanGate, note: fill(f.note) };
-    if (status[f.gate] === "PASS") { actions.push({ ...base, action: "skip-pass" }); continue; }
-    if (status[f.gate] === "N/A") { actions.push({ ...base, action: "skip-na" }); continue; }
+    // A gateless file (`gate: null`) is never skipped as passing; it follows another gate's N/A.
+    if (f.gate && status[f.gate] === "PASS") { actions.push({ ...base, action: "skip-pass" }); continue; }
+    if (status[f.gate ?? f.follows] === "N/A") { actions.push({ ...base, action: "skip-na" }); continue; }
     const missing = unmet(f.requires, target);
     if (missing.length) { actions.push({ ...base, action: "skip-requires", requires: `needs ${missing.join(", ")}` }); continue; }
     if (!f.src) { actions.push({ ...base, action: "manual" }); continue; }
@@ -131,7 +132,7 @@ export const HOOK_SNIPPET = `{
 function renderPlan(plan, write) {
   if (!plan.adapter) return "No adapter matched this repo (adapters: " + loadAdapters().map((a) => a.name).join(", ") + "). The scorecard still works; generate files by hand.\n";
   const lines = [`## fix — adapter ${plan.adapter}, stage ${plan.stage} (${write ? "writing" : "dry-run; add --write"})`, "", "| Gate | File | Action | Note |", "|---|---|---|---|"];
-  for (const a of plan.actions) lines.push(`| ${a.gate} | ${a.dest ?? "—"} | ${a.action}${a.requires ? ` (${a.requires})` : ""} | ${a.note ?? a.humanGate ?? ""} |`);
+  for (const a of plan.actions) lines.push(`| ${a.gate ?? "—"} | ${a.dest ?? "—"} | ${a.action}${a.requires ? ` (${a.requires})` : ""} | ${a.note ?? a.humanGate ?? ""} |`);
   lines.push("", "Optional SessionStart hook for .claude/settings.json (reads open human gates aloud):", "```json", HOOK_SNIPPET, "```");
   return lines.join("\n") + "\n";
 }
