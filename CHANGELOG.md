@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 — 2026-11-15
+
+Found by running `--url` against a real Cloudflare Worker during a
+`skeptic-review`: two live checks failed an app that passed them.
+
+- Gate 6: when `/api/health` answers 401, 403 or 405 (an `/api/*` behind the
+  app's own login), the probe now tries `/health` too. 0.3.0 tried it only on
+  a 404 and reported the 401 as a missing health route. A 5xx is still
+  reported as a broken route.
+- Gate 11: frame-ancestors is judged on an HTML page. When the front page is
+  a 404 or JSON, the probe also requests `/privacy`; with no HTML page found,
+  the gate is UNKNOWN instead of FAIL. HSTS and nosniff are checked as before.
+
 ## 0.3.0 — 2026-11-15
 
 Operations: the processes behind a running app, graded by the audit and

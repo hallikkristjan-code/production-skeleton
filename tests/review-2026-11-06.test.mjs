@@ -383,7 +383,8 @@ async function withServer(fn) {
 test("--url sends GET requests only by default", async () => {
   await withServer(async (url, seen) => {
     const live = await probeUrl(url);
-    assert.deepEqual(seen, ["GET /api/health", "GET /"]);
+    // This server's front page is JSON, so the header check also tries /privacy (0.3.1).
+    assert.deepEqual(seen, ["GET /api/health", "GET /", "GET /privacy"]);
     assert.equal(live.health.status, 200);
     assert.ok(!("csrf" in live));
     assert.deepEqual(live.errors, []);

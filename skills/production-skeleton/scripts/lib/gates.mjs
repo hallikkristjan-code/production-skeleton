@@ -233,7 +233,7 @@ const HEALTH_STRING_RE = /["'`]\/(api\/)?healthz?["'`]|\b(re_)?path\(\s*r?["']\^
 function gate6(repo, ctx) {
   const live = ctx.live?.health;
   if (live) {
-    if (live.status !== 200) return FAIL(`live: ${live.status} from health endpoint`);
+    if (live.status !== 200) return FAIL(`live: ${live.status} from ${live.path ?? "health endpoint"}`);
     let body;
     try { body = JSON.parse(live.body); } catch { return FAIL("live: 200 but body is not JSON with a version field"); }
     const version = body && typeof body === "object" && !Array.isArray(body) ? body.version ?? body.sha ?? body.commit ?? body.git_sha : null;
@@ -364,6 +364,11 @@ function gate11(repo, ctx) {
     if (!/\bmax-age\s*=\s*[1-9]\d*\b/i.test(live["strict-transport-security"] ?? "")) missing.push(`Strict-Transport-Security (${live["strict-transport-security"] ?? "absent"})`);
     if (!validFrames(live["content-security-policy"] ?? "") && !/^(DENY|SAMEORIGIN)$/i.test(live["x-frame-options"] ?? "")) missing.push("frame-ancestors");
     if (!/^nosniff$/i.test(live["x-content-type-options"] ?? "")) missing.push("nosniff");
+    // A 404 or JSON response carries no framing policy because it needs none: judge
+    // frame-ancestors only on an HTML page (headersHtml is absent in older live results).
+    if (missing.length === 1 && missing[0] === "frame-ancestors" && ctx.live.headersHtml === false) {
+      return UNKNOWN(`live: ${ctx.live.headersFrom} is not an HTML page, frame-ancestors not checked (HSTS and nosniff present); pass --url to a page`);
+    }
     if (!missing.length && !ctx.live.finalUrl?.startsWith("https://")) return UNKNOWN("live: HSTS requires https transport");
     return missing.length ? FAIL(`live: missing ${missing.join(", ")}`) : PASS("live: HSTS, frame-ancestors, nosniff present");
   }
