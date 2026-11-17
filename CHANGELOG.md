@@ -12,6 +12,13 @@ Found by running `--url` against a real Cloudflare Worker during a
 - Gate 11: frame-ancestors is judged on an HTML page. When the front page is
   a 404 or JSON, the probe also requests `/privacy`; with no HTML page found,
   the gate is UNKNOWN instead of FAIL. HSTS and nosniff are checked as before.
+- `skeptic-review` names three patterns that mark generated code. Section 2
+  asks for hard-coded accounts (a fixed user or password that can reach
+  production is ❌) and hand-rolled auth where TARA, OIDC or OAuth2 was
+  available (password hash, token randomness, JWT library). Section 5 lists
+  hand-rolled primitives: date and time-zone math, money as floating point,
+  CSV and HTML parsing, sanitizers, crypto. They are findings for the Top-3
+  risks, not a reason to stop: the audit still runs all 14 sections.
 
 ## 0.3.0 — 2026-11-15
 
